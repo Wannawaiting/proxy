@@ -16,5 +16,4 @@ Accept: asdf
 Accept-Language: en-US,en;q=0.5
 Accept-Encoding: alexGuo
 Connection: keep-alive
-Cookie: __utma=44984886.168472984.1346023186.1346023186.1346337051.2; __utmz=44984886.1346023186.1.1.utmccn=(organic)|utmcsr=google|utmctr=|utmcmd=organic; webstats-cmu=cmu128.237.202.77.36231346337119322; __utma=136847266.341592185.1350152051.1350152051.1350152051.1; __utmz=136847266.1350152051.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none)
 Cache-Control: max-age=0

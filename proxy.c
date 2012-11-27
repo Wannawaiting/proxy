@@ -10,7 +10,8 @@ static const char *acceptStr = "Accept: text/html,application/xhtml+xml,applicat
 static const char *accept_encodingStr = "Accept-Encoding: gzip, deflate\r\n";
 
 void handleRequest(int fd);
-char *correctHeaders(rio_t *rp, char *buf);
+char *correctHeaders(rio_t *rp, char *buf, char *host);
+char *compileResponse(rio_t *rp);
 void clienterror(int fd, char *cause, char *errnum, 
 				char *shortmsg, char *longmsg);
 
@@ -26,36 +27,83 @@ int main()
 		connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 		printf("connection found...\n");
 		handleRequest(connfd); //return response and send back to client
+		printf("closing connection...\n");
 		Close(connfd);
     }
 	return 0;
 }
 
 //like doit in
-void handleRequest(int fd) {
-    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
-    //char filename[MAXLINE], cgiargs[MAXLINE];
-    rio_t rio;
+void handleRequest(int toClientFD) {
+    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], 
+			version[MAXLINE], hostname[MAXLINE];
+	hostname[0] = '\0';
+    rio_t clientRIO, serverRIO;
+	
+	char *request, *response;
+	
   
     /* Read request line and headers */
-    Rio_readinitb(&rio, fd);
-    Rio_readlineb(&rio, buf, MAXLINE);
+    Rio_readinitb(&clientRIO, toClientFD);
+    Rio_readlineb(&clientRIO, buf, MAXLINE);
     sscanf(buf, "%s %s %s", method, uri, version);
     if (strcasecmp(method, "GET")) { 
-       clienterror(fd, method, "501", "Not Implemented",
+       clienterror(toClientFD, method, "501", "Not Implemented",
                 "Proxy does not implement this method");
         return;
     }
 	
-    char *request = correctHeaders(&rio, buf); //remember to free later
+    request = correctHeaders(&clientRIO, buf, hostname); //remember to free later
+	//if(hostname == "") {hostname = parseURIForHost(uri);} //ask tas, i think strtok would work
+	
 	printf("correctedHeader: %s\n", request);
+	int toServerFD = Open_clientfd(hostname, 80);
+	
+	//compile response
+	Rio_readinitb(&serverRIO, toServerFD);
+	Rio_writen(toServerFD, request, strlen(request));
+	free(request);
+	response = compileResponse(&serverRIO); //reuse buf
+	
+	Close(toServerFD);
+	
+	Rio_writen(toClientFD, response, strlen(response));
+	printf("response: %s\n", response);
+	free(response); //error is right here, can't figure out what it is though
 }
 
-char *correctHeaders(rio_t *rp, char *buf) {
+char *compileResponse(rio_t *rp) {
+	int responseActLen = 10;
+	int responseAllocLen = 0;
+	char *response = (char *) malloc(sizeof(char)*(10+1));
+	response[responseAllocLen] = '\0';
+	
+	char buf[MAXLINE];
+	
+	while(Rio_readnb(rp, buf, MAXLINE) != 0) {//readnb returns MAXLINE-strlen(buf)		
+		if(responseAllocLen >= responseActLen) {
+			response = (char *) realloc(response, sizeof(char)*(2*responseAllocLen+1)); //+1 for null terminator
+			responseActLen = 2*responseAllocLen;
+		}
+		
+		strcat(response, buf);
+		responseAllocLen += strlen(buf);
+	}
+	
+	if(responseAllocLen < responseActLen) {//downsize if necessary
+		response = (char *) realloc(response, sizeof(char)*(responseAllocLen+1)); //+1 for null terminator
+		response[responseAllocLen] = '\0';
+	}
+	
+	response[responseAllocLen] = '\0';
+	return response;
+}
+
+char *correctHeaders(rio_t *rp, char *buf, char *host) {
 	int resultActLen = 21*MAXLINE+2; //+2 for /r/n
 	int resultAllocLen = 0;
 	char *result = (char *) malloc(sizeof(char)*(resultActLen+1));
-	result[0] = '\0';
+	result[resultAllocLen] = '\0';
 	
 	//printf("found buf: %s\n", buf);
     while(strcmp(buf, "\r\n") && strcmp(buf, "\n")) {
@@ -74,11 +122,18 @@ char *correctHeaders(rio_t *rp, char *buf) {
 		else if(!strcasecmp(key, "accept-encoding:")) {
 			append = (char *) accept_encodingStr;
 		}
-		else {append = buf;}
+		else {
+			append = buf;
+			if(!strcasecmp(key, "host:")) {
+				printf("found host: %s\n", value);
+				strcpy(host, value);
+			}
+		}
+		
 		
 		int appendLen = strlen(append);
 		if(resultAllocLen+2 >= resultActLen) { //+2 because we are saving space of '\r\n'
-			result = (char *) realloc(result, resultAllocLen+appendLen+1); //+1 for null terminator
+			result = (char *) realloc(result, sizeof(char)*(resultAllocLen+appendLen+1)); //+1 for null terminator
 			resultActLen = resultAllocLen+appendLen;
 		}
 		
@@ -90,7 +145,7 @@ char *correctHeaders(rio_t *rp, char *buf) {
 	result[resultAllocLen] = '\r'; result[resultAllocLen+1] = '\n'; result[resultAllocLen+2] = '\0';
 	
 	if(resultAllocLen < resultActLen) {//downsize if necessary
-		result = (char *) realloc(result, resultAllocLen+1);
+		result = (char *) realloc(result, sizeof(char)*(resultAllocLen+1));
 		result[resultAllocLen] = '\0';
 	}
 	
