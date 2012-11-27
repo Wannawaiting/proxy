@@ -95,9 +95,11 @@ void read_requesthdrs(rio_t *rp)
     char buf[MAXLINE];
 
     Rio_readlineb(rp, buf, MAXLINE);
+	//parse firstline of header
     printf("%s", buf);
     while(strcmp(buf, "\r\n")) {
 	Rio_readlineb(rp, buf, MAXLINE);
+	//parse buf
 	printf("%s", buf);
     }
     return;

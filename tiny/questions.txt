@@ -1,0 +1,3 @@
+questions:
+1. in tiny does the while run Accept and doit all the time? 
+	if so what does accept return and how does do it handle this?
