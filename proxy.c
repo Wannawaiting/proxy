@@ -8,6 +8,8 @@
 static const char *user_agentStr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 static const char *acceptStr = "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n";
 static const char *accept_encodingStr = "Accept-Encoding: gzip, deflate\r\n";
+static const char *connectionStr = "Connection: close\r\n";
+static const char *proxyConnectionStr = "Proxy-Connection: close\r\n";
 
 void handleRequest(int fd);
 char *correctHeaders(rio_t *rp, char *buf, char *host);
@@ -106,40 +108,32 @@ char *compileResponse(rio_t *rp) {
 }
 
 char *correctHeaders(rio_t *rp, char *buf, char *host) {
-	int initSize = 21*MAXLINE;
-	int bufLen = strlen(buf);
-	if(bufLen > initSize) {initSize = bufLen;}
-	int resultActLen = initSize+2; //+2 for /r/n
+	int resultActLen = strlen(buf)+strlen(acceptStr)+strlen(accept_encodingStr)
+			+strlen(user_agentStr)+strlen(proxyConnectionStr)
+			+strlen(connectionStr)+2; //+2 for /r/n
 	int resultAllocLen = 0;
 	char *result = (char *) malloc(sizeof(char)*(resultActLen+1)); //+1 for null term
 	result[resultAllocLen] = '\0';
 	
-	strcpy(result, buf);
-	resultAllocLen = bufLen;
+	strcpy(result, buf); //buf is the get request line
+	strcat(result, user_agentStr);
+	strcat(result, acceptStr);
+	strcat(result, accept_encodingStr);
+	strcat(result, proxyConnectionStr);
+	strcat(result, connectionStr);
+	resultAllocLen = resultActLen-2;
+	
+	
 	
     while(strcmp(buf, "\r\n") && strcmp(buf, "\n")) {
 		Rio_readlineb(rp, buf, MAXLINE);
 		char key[MAXLINE], value[MAXLINE];
 		sscanf(buf, "%s %s", key, value);
 		char *append;
-		if(!strcasecmp(key, "user-agent:")) {
-			append = (char *) user_agentStr;
-		}
-		else if(!strcasecmp(key, "accept:")) {
-			append = (char *) acceptStr;
-		}
-		else if(!strcasecmp(key, "accept-encoding:")) {
-			append = (char *) accept_encodingStr;
-		}
-		/*else if(!strcasecmp(key, "connection:")) {
-			append = "Connection: close\r\n";
-		}
-		else if(!strcasecmp(key, "proxy-connection:")) {
-			append = "Proxy-Connection: close\r\n";
-		}*/
-		else if(!strcasecmp(key, "cookie:")) {
-			append = "";
-		}
+		if(!strcasecmp(key, "cookie:") || !strcasecmp(key, "proxy-connection:") 
+			|| !strcasecmp(key, "connection:") || !strcasecmp(key, "accept-encoding:")
+			|| !strcasecmp(key, "accept:") || !strcasecmp(key, "user-agent:")) 
+		{append = "";}
 		else {
 			append = buf;
 			if(!strcasecmp(key, "host:")) {
