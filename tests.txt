@@ -1,19 +1,20 @@
 //tests
 
-GET http://www.cs.cmu.edu/~213/index.html HTTP/1.0
-HTTP/1.1 200 OK
-Date: Tue, 27 Nov 2012 00:58:59 GMT
-Server: Apache
-Accept-Ranges: bytes
-Content-Length: 9879
-Keep-Alive: timeout=15, max=99
-Connection: Keep-Alive
-Content-Type: text/html
-GET /~213/index.html HTTP/1.1
+GET http://www.cs.cmu.edu/~213/index.html HTTP/1.1
 Host: www.cs.cmu.edu
-User-Agent: poop
-Accept: asdf
+User-Agent: Mozilla/5.0 (Windows NT 6.1; WOW64; rv:16.0) Gecko/20100101 Firefox/16.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
 Accept-Language: en-US,en;q=0.5
-Accept-Encoding: alexGuo
-Connection: keep-alive
-Cache-Control: max-age=0
+Accept-Encoding: gzip, deflate
+Connection: close
+Proxy-Connection: close
+
+GET /~bryant/test.html HTTP/1.1
+Host: www.cs.cmu.edu
+User-Agent: Mozilla/5.0 (Windows; U; Windows NT 6.0; en-US; rv:1.9.2.11) Gecko/20101012 Firefox/3.6.11
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+Accept-Language: en-us,en;q=0.5
+Accept-Encoding: gzip,deflate
+Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7
+Connection: close
+Proxy-Connection: close

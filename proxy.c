@@ -26,15 +26,15 @@ int main()
 		clientlen = sizeof(clientaddr);
 		connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 		printf("connection found...\n");
-		handleRequest(connfd); //return response and send back to client
+		handleRequest(connfd);
 		printf("closing connection...\n");
 		Close(connfd);
     }
 	return 0;
 }
 
-//like doit in
 void handleRequest(int toClientFD) {
+	int toServerFD;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], 
 			version[MAXLINE], hostname[MAXLINE];
 	hostname[0] = '\0';
@@ -54,62 +54,71 @@ void handleRequest(int toClientFD) {
     }
 	
     request = correctHeaders(&clientRIO, buf, hostname); //remember to free later
-	//if(hostname == "") {hostname = parseURIForHost(uri);} //ask tas, i think strtok would work
 	
-	printf("correctedHeader: %s\n", request);
-	int toServerFD = Open_clientfd(hostname, 80);
+	printf("correctedHeader:\n%s", request);
+	toServerFD = Open_clientfd(hostname, 80);
 	
-	//compile response
 	Rio_readinitb(&serverRIO, toServerFD);
+	
+	//send request
 	Rio_writen(toServerFD, request, strlen(request));
-	free(request);
+	
+	//get response
 	response = compileResponse(&serverRIO); //reuse buf
 	
 	Close(toServerFD);
 	
 	Rio_writen(toClientFD, response, strlen(response));
-	printf("response: %s\n", response);
-	free(response); //error is right here, can't figure out what it is though
+	printf("response:\n%s", response);
+	
+	free(request);
+	free(response);
 }
 
 char *compileResponse(rio_t *rp) {
 	int responseActLen = 10;
 	int responseAllocLen = 0;
-	char *response = (char *) malloc(sizeof(char)*(10+1));
+	char *response = (char *) malloc(sizeof(char)*MAXLINE);
 	response[responseAllocLen] = '\0';
 	
-	char buf[MAXLINE];
+	char buf[MAXLINE]; //valgrind complains on this line sometimes, if it does use the below line and remember to free
+	//char *buf = (char *) calloc(sizeof(char),MAXLINE);
 	
-	while(Rio_readnb(rp, buf, MAXLINE) != 0) {//readnb returns MAXLINE-strlen(buf)		
-		if(responseAllocLen >= responseActLen) {
-			response = (char *) realloc(response, sizeof(char)*(2*responseAllocLen+1)); //+1 for null terminator
-			responseActLen = 2*responseAllocLen;
+	while(Rio_readnb(rp, buf, MAXLINE) != 0) {//readnb returns MAXLINE-strlen(buf)
+		int sizeNeeded = responseAllocLen + strlen(buf);
+		if(sizeNeeded >= responseActLen) {
+			int resizeSize = 2*responseAllocLen;
+			if(sizeNeeded > resizeSize) {resizeSize = sizeNeeded;}
+			response = (char *) realloc(response, sizeof(char)*(resizeSize+1)); //+1 for null terminator
+			responseActLen = resizeSize;
 		}
 		
 		strcat(response, buf);
-		responseAllocLen += strlen(buf);
+		responseAllocLen = sizeNeeded;
 	}
+	//free(buf);
 	
 	if(responseAllocLen < responseActLen) {//downsize if necessary
 		response = (char *) realloc(response, sizeof(char)*(responseAllocLen+1)); //+1 for null terminator
-		response[responseAllocLen] = '\0';
 	}
-	
 	response[responseAllocLen] = '\0';
 	return response;
 }
 
 char *correctHeaders(rio_t *rp, char *buf, char *host) {
-	int resultActLen = 21*MAXLINE+2; //+2 for /r/n
+	int initSize = 21*MAXLINE;
+	int bufLen = strlen(buf);
+	if(bufLen > initSize) {initSize = bufLen;}
+	int resultActLen = initSize+2; //+2 for /r/n
 	int resultAllocLen = 0;
-	char *result = (char *) malloc(sizeof(char)*(resultActLen+1));
+	char *result = (char *) malloc(sizeof(char)*(resultActLen+1)); //+1 for null term
 	result[resultAllocLen] = '\0';
 	
-	//printf("found buf: %s\n", buf);
+	strcpy(result, buf);
+	resultAllocLen = bufLen;
+	
     while(strcmp(buf, "\r\n") && strcmp(buf, "\n")) {
-		//printf("asdf\n");
 		Rio_readlineb(rp, buf, MAXLINE);
-		//printf("found buf: %s\n", buf);
 		char key[MAXLINE], value[MAXLINE];
 		sscanf(buf, "%s %s", key, value);
 		char *append;
@@ -122,6 +131,15 @@ char *correctHeaders(rio_t *rp, char *buf, char *host) {
 		else if(!strcasecmp(key, "accept-encoding:")) {
 			append = (char *) accept_encodingStr;
 		}
+		/*else if(!strcasecmp(key, "connection:")) {
+			append = "Connection: close\r\n";
+		}
+		else if(!strcasecmp(key, "proxy-connection:")) {
+			append = "Proxy-Connection: close\r\n";
+		}*/
+		else if(!strcasecmp(key, "cookie:")) {
+			append = "";
+		}
 		else {
 			append = buf;
 			if(!strcasecmp(key, "host:")) {
@@ -130,24 +148,24 @@ char *correctHeaders(rio_t *rp, char *buf, char *host) {
 			}
 		}
 		
-		
-		int appendLen = strlen(append);
-		if(resultAllocLen+2 >= resultActLen) { //+2 because we are saving space of '\r\n'
-			result = (char *) realloc(result, sizeof(char)*(resultAllocLen+appendLen+1)); //+1 for null terminator
-			resultActLen = resultAllocLen+appendLen;
+		int sizeNeeded = resultAllocLen + strlen(append);
+		if(sizeNeeded >= resultActLen) {
+			int resizeSize = 2*resultAllocLen;
+			if(sizeNeeded > resizeSize) {resizeSize = sizeNeeded;}
+			result = (char *) realloc(result, sizeof(char)*(resizeSize+1)); //+1 for null terminator
+			resultActLen = resizeSize;
 		}
 		
 		strcat(result, append);
-		resultAllocLen += appendLen;
+		resultAllocLen = sizeNeeded;
     }
 	
 	//end request
-	result[resultAllocLen] = '\r'; result[resultAllocLen+1] = '\n'; result[resultAllocLen+2] = '\0';
 	
-	if(resultAllocLen < resultActLen) {//downsize if necessary
-		result = (char *) realloc(result, sizeof(char)*(resultAllocLen+1));
-		result[resultAllocLen] = '\0';
+	if(resultAllocLen+2 < resultActLen) {//downsize if necessary, +2 because we are saving space of '\r\n'
+		result = (char *) realloc(result, sizeof(char)*(resultAllocLen+3)); //+3 for null terminator and EOF flag ('\r\n')
 	}
+	result[resultAllocLen] = '\r'; result[resultAllocLen+1] = '\n'; result[resultAllocLen+2] = '\0';
 	
     return result;
 }
@@ -160,11 +178,11 @@ void clienterror(int fd, char *cause, char *errnum,
     char buf[MAXLINE], body[MAXBUF];
 
     /* Build the HTTP response body */
-    sprintf(body, "<html><title>Tiny Error</title>");
+    sprintf(body, "<html><title>Proxy Error</title>");
     sprintf(body, "%s<body bgcolor=""ffffff"">\r\n", body);
     sprintf(body, "%s%s: %s\r\n", body, errnum, shortmsg);
     sprintf(body, "%s<p>%s: %s\r\n", body, longmsg, cause);
-    sprintf(body, "%s<hr><em>The Tiny Web server</em>\r\n", body);
+    sprintf(body, "%s<hr><em>The Proxy server</em>\r\n", body);
 
     /* Print the HTTP response */
     sprintf(buf, "HTTP/1.0 %s %s\r\n", errnum, shortmsg);
