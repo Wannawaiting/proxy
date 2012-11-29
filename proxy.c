@@ -69,8 +69,8 @@ void handleRequest(int toClientFD) {
 	while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
 		Rio_writen(toClientFD, buf, bufLen);
 	}
-	Close(toServerFD);
 	
+	Close(toServerFD);
 	free(request);
 }
 
