@@ -13,7 +13,6 @@ static const char *proxyConnectionStr = "Proxy-Connection: close\r\n";
 
 void handleRequest(int fd);
 char *correctHeaders(rio_t *rp, char *buf, char *host);
-char *compileResponse(rio_t *rp);
 void clienterror(int fd, char *cause, char *errnum, 
 				char *shortmsg, char *longmsg);
 
@@ -42,7 +41,7 @@ void handleRequest(int toClientFD) {
 	hostname[0] = '\0';
     rio_t clientRIO, serverRIO;
 	
-	char *request, *response;
+	char *request;
 	
   
     /* Read request line and headers */
@@ -65,46 +64,14 @@ void handleRequest(int toClientFD) {
 	//send request
 	Rio_writen(toServerFD, request, strlen(request));
 	
-	//get response
-	response = compileResponse(&serverRIO); //reuse buf
-	
+	//get response and immediatly write it to the client
+	int bufLen;
+	while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
+		Rio_writen(toClientFD, buf, bufLen);
+	}
 	Close(toServerFD);
 	
-	Rio_writen(toClientFD, response, strlen(response));
-	printf("response:\n%s", response);
-	
 	free(request);
-	free(response);
-}
-
-char *compileResponse(rio_t *rp) {
-	int responseActLen = 10;
-	int responseAllocLen = 0;
-	char *response = (char *) malloc(sizeof(char)*MAXLINE);
-	response[responseAllocLen] = '\0';
-	
-	char buf[MAXLINE]; //valgrind complains on this line sometimes, if it does use the below line and remember to free
-	//char *buf = (char *) calloc(sizeof(char),MAXLINE);
-	
-	while(Rio_readnb(rp, buf, MAXLINE) != 0) {//readnb returns MAXLINE-strlen(buf)
-		int sizeNeeded = responseAllocLen + strlen(buf);
-		if(sizeNeeded >= responseActLen) {
-			int resizeSize = 2*responseAllocLen;
-			if(sizeNeeded > resizeSize) {resizeSize = sizeNeeded;}
-			response = (char *) realloc(response, sizeof(char)*(resizeSize+1)); //+1 for null terminator
-			responseActLen = resizeSize;
-		}
-		
-		strcat(response, buf);
-		responseAllocLen = sizeNeeded;
-	}
-	//free(buf);
-	
-	if(responseAllocLen < responseActLen) {//downsize if necessary
-		response = (char *) realloc(response, sizeof(char)*(responseAllocLen+1)); //+1 for null terminator
-	}
-	response[responseAllocLen] = '\0';
-	return response;
 }
 
 char *correctHeaders(rio_t *rp, char *buf, char *host) {
