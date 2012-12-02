@@ -11,30 +11,36 @@ static const char *accept_encodingStr = "Accept-Encoding: gzip, deflate\r\n";
 static const char *connectionStr = "Connection: close\r\n";
 static const char *proxyConnectionStr = "Proxy-Connection: close\r\n";
 
-void handleRequest(int fd);
+void handleRequest(int *toClientFDPtr);
 char *correctHeaders(rio_t *rp, char *buf, char *host);
 void clienterror(int fd, char *cause, char *errnum, 
 				char *shortmsg, char *longmsg);
 
-int main()
-{
-	int listenfd, connfd;
+int main() {
+	int listenfd, *connfdPtr;
 	unsigned int clientlen;
     struct sockaddr_in clientaddr;
+	pthread_t tid;
 	
     listenfd = Open_listenfd(18845);
     while (1) {
 		clientlen = sizeof(clientaddr);
-		connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
+		connfdPtr = Malloc(sizeof(int));
+		*connfdPtr = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 		printf("connection found...\n");
-		handleRequest(connfd);
-		printf("closing connection...\n");
-		Close(connfd);
+		//handleRequest(connfd);
+		Pthread_create(&tid, NULL, handleRequest, connfdPtr);
+		//printf("closing connection...\n");
+		//Close(connfd);
     }
 	return 0;
 }
 
-void handleRequest(int toClientFD) {
+void handleRequest(int *toClientFDPtr) {
+	Pthread_detach(pthread_self());
+	int toClientFD = *toClientFDPtr;
+	free(toClientFDPtr); //we can free early since it just stores a primative
+	
 	int toServerFD;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], 
 			version[MAXLINE], hostname[MAXLINE];
@@ -49,7 +55,7 @@ void handleRequest(int toClientFD) {
     Rio_readlineb(&clientRIO, buf, MAXLINE);
     sscanf(buf, "%s %s %s", method, uri, version);
     if (strcasecmp(method, "GET")) { 
-       clienterror(toClientFD, method, "501", "Not Implemented",
+        clienterror(toClientFD, method, "501", "Not Implemented",
                 "Proxy does not implement this method");
         return;
     }
@@ -70,8 +76,11 @@ void handleRequest(int toClientFD) {
 		Rio_writen(toClientFD, buf, bufLen);
 	}
 	
+	Close(toClientFD);
 	Close(toServerFD);
 	free(request);
+	printf("connection closed...\n");
+	return;
 }
 
 char *correctHeaders(rio_t *rp, char *buf, char *host) {
