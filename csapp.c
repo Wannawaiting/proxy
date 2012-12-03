@@ -22,7 +22,7 @@ void posix_error(int code, char *msg) /* posix-style error */
 void dns_error(char *msg) /* dns-style error */
 {
     fprintf(stderr, "%s: DNS error %d\n", msg, h_errno);
-    exit(0);
+    //exit(0);
 }
 
 void app_error(char *msg) /* application error */
@@ -715,10 +715,13 @@ ssize_t Rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen) {
     return rc;
 }
 
-void Getaddrinfo(const char *hostname, const char *servname,
+int Getaddrinfo(const char *hostname, const char *servname,
          const struct addrinfo *hints, struct addrinfo **res) {
-	getaddrinfo(hostname, servname, hints, res);
-	//handle errors
+	int error = getaddrinfo(hostname, servname, hints, res);
+	if(error == EAI_AGAIN) 
+	{return Getaddrinfo(hostname, servname, hints, res);}
+	return error;
+	
 }
 
 /******************************** 
@@ -733,46 +736,21 @@ void Getaddrinfo(const char *hostname, const char *servname,
 /* $begin open_clientfd */
 int open_clientfd(char *hostname, char *portStr) 
 {
-	printf("opening client connection\n");
-    int clientfd;
+    int clientfd, error;
 	struct addrinfo *res;
-	//char *cause;
 
     if ((clientfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-	{return -1; /* check errno for cause of error */}
-	printf("made socket: %d\n", clientfd);
+	{return -1;}
 	
-	printf("getting addr info\n");
-	Getaddrinfo(hostname, portStr, NULL, &res);
-	/*if(clientfd >= 0 && 
-		connect(clientfd, res->ai_addr, res->ai_addrlen) < 0) {
-		cause = "bad connection";
-		printf("%s\n", cause);
-		return -1;
-	}
-	else {
-		cause = "bad socket";
-		printf("%s\n", cause);
-	}
-	printf("connected to socket: %d\n", clientfd);
-	
-	if(clientfd < 0) {
-		unix_error(cause);
-	}
-	
-	freeaddrinfo(res);
-	return clientfd;*/
-	
-    /*bzero((char *) &serveraddr, sizeof(serveraddr));
-    serveraddr.sin_family = AF_INET;
-    bcopy((char *)hp->h_addr_list[0], 
-	  (char *)&serveraddr.sin_addr.s_addr, hp->h_length);
-    serveraddr.sin_port = htons(port);*/
+	// Get address info by given hostname and port
+	if((error = Getaddrinfo(hostname, portStr, NULL, &res)) < 0) 
+	{return error;}
 
-    // Establish a connection with the server 
-	printf("trying to connect to: %d\n", clientfd);
+    // Establish a connection with the server
     if (connect(clientfd, (SA *) res->ai_addr, res->ai_addrlen) < 0)
 	{return -1;}
+	
+	freeaddrinfo(res);
     return clientfd;
 }
 /* $end open_clientfd */
@@ -818,12 +796,9 @@ int open_listenfd(int port)
 int Open_clientfd(char *hostname, char *portStr) 
 {
     int rc;
-
     if ((rc = open_clientfd(hostname, portStr)) < 0) {
-	if (rc == -1)
-	    unix_error("Open_clientfd Unix error");
-	else        
-	    dns_error("Open_clientfd DNS error");
+		if (rc == -1) {unix_error("Open_clientfd Unix error");}
+		else {dns_error("Open_clientfd DNS error");}
     }
     return rc;
 }
@@ -831,7 +806,6 @@ int Open_clientfd(char *hostname, char *portStr)
 int Open_listenfd(int port) 
 {
     int rc;
-
     if ((rc = open_listenfd(port)) < 0)
 	unix_error("Open_listenfd error");
     return rc;

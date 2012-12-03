@@ -67,20 +67,21 @@ void handleRequest(int *toClientFDPtr) {
 	
 	printf("correctedHeader:\n%s", request);
 	toServerFD = Open_clientfd(hostname, "80");
-	
-	Rio_readinitb(&serverRIO, toServerFD);
-	
-	//send request
-	Rio_writen(toServerFD, request, strlen(request));
-	
-	//get response and immediatly write it to the client
-	int bufLen;
-	while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
-		Rio_writen(toClientFD, buf, bufLen);
+	if(toServerFD >= 0) {
+		Rio_readinitb(&serverRIO, toServerFD);
+		
+		//send request
+		Rio_writen(toServerFD, request, strlen(request));
+		
+		//get response and immediatly write it to the client
+		int bufLen;
+		while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
+			Rio_writen(toClientFD, buf, bufLen);
+		}
+		Close(toServerFD);
 	}
 	
 	Close(toClientFD);
-	Close(toServerFD);
 	free(request);
 	printf("connection closed...\n");
 	return;
