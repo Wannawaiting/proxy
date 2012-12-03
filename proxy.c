@@ -13,19 +13,24 @@ static const char *connectionStr = "Connection: close\r\n";
 static const char *proxyConnectionStr = "Proxy-Connection: close\r\n";
 
 void handleRequest(int *toClientFDPtr);
-char *correctHeaders(rio_t *rp, char *buf, char *host);
+char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr);
 void clienterror(int fd, char *cause, char *errnum, 
 				char *shortmsg, char *longmsg);
 
-int main() {
+int main(int argc, char **argv) {
 	int listenfd, *connfdPtr;
 	unsigned int clientlen;
     struct sockaddr_in clientaddr;
 	pthread_t tid;
 	
+	if(argc != 2) {
+		printf("bad params\n");
+		exit(0);
+	}
+	
 	signal(SIGPIPE, SIG_IGN);
 	
-    listenfd = Open_listenfd(18845);
+    listenfd = Open_listenfd(atoi(argv[1]));
     while (1) {
 		clientlen = sizeof(clientaddr);
 		connfdPtr = Malloc(sizeof(int));
@@ -46,8 +51,8 @@ void handleRequest(int *toClientFDPtr) {
 	
 	int toServerFD;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], 
-			version[MAXLINE], hostname[MAXLINE];
-	hostname[0] = '\0';
+			version[MAXLINE], hostname[MAXLINE], portStr[6]; //max port length is 5 characters
+	hostname[0] = '\0'; portStr[0] = '\0';
     rio_t clientRIO, serverRIO;
 	
 	char *request;
@@ -63,10 +68,18 @@ void handleRequest(int *toClientFDPtr) {
         return;
     }
 	
-    request = correctHeaders(&clientRIO, buf, hostname); //remember to free later
-	
+    request = correctHeaders(&clientRIO, buf, hostname, (char *) portStr); //remember to free later
+	printf("host: %s| port: %s\n", hostname, portStr);
 	printf("correctedHeader:\n%s", request);
-	toServerFD = Open_clientfd(hostname, "80");
+	if(strlen(portStr) == 0) {
+		portStr[0] = '8';
+		portStr[1] = '0';
+		portStr[2] = '\0';
+	}
+	
+	toServerFD = Open_clientfd(hostname, portStr);
+	
+	// read from server and write to client only if valid connection to server
 	if(toServerFD >= 0) {
 		Rio_readinitb(&serverRIO, toServerFD);
 		
@@ -87,7 +100,7 @@ void handleRequest(int *toClientFDPtr) {
 	return;
 }
 
-char *correctHeaders(rio_t *rp, char *buf, char *host) {
+char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr) {
 	int resultActLen = strlen(buf)+strlen(acceptStr)+strlen(accept_encodingStr)
 			+strlen(user_agentStr)+strlen(proxyConnectionStr)
 			+strlen(connectionStr)+2; //+2 for /r/n
@@ -106,10 +119,10 @@ char *correctHeaders(rio_t *rp, char *buf, char *host) {
 	
 	
     while(strcmp(buf, "\r\n") && strcmp(buf, "\n")) {
+		char key[MAXLINE], value[MAXLINE], *append;
+		
 		Rio_readlineb(rp, buf, MAXLINE);
-		char key[MAXLINE], value[MAXLINE];
 		sscanf(buf, "%s %s", key, value);
-		char *append;
 		if(!strcasecmp(key, "cookie:") || !strcasecmp(key, "proxy-connection:") 
 			|| !strcasecmp(key, "connection:") || !strcasecmp(key, "accept-encoding:")
 			|| !strcasecmp(key, "accept:") || !strcasecmp(key, "user-agent:")) 
@@ -117,8 +130,12 @@ char *correctHeaders(rio_t *rp, char *buf, char *host) {
 		else {
 			append = buf;
 			if(!strcasecmp(key, "host:")) {
-				printf("found host: %s\n", value);
-				strcpy(host, value);
+				char *portStrTmp, *hostTmp;
+				hostTmp = strtok_r(value, ":", &portStrTmp);
+				if(strlen(hostTmp) == 0) {strcpy(host, value);}
+				else {strcpy(host, hostTmp);}
+				if(strlen(portStrTmp) == 0) {strcpy(portStr, "80");}
+				else {strcpy(portStr, portStrTmp);}
 			}
 		}
 		

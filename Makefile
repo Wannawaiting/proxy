@@ -10,6 +10,11 @@ csapp.o: csapp.c csapp.h
 proxy.o: proxy.c csapp.h
 	$(CC) $(CFLAGS) -c proxy.c
 
+cache.o: cache.c
+	$(CC) $(CFLAGS) -c cache.c
+
+cache: cache.o csapp.o
+
 proxy: proxy.o csapp.o
 
 submit:

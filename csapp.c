@@ -734,8 +734,7 @@ int Getaddrinfo(const char *hostname, const char *servname,
  *   Returns -2 and sets h_errno on DNS (gethostbyname) error.
  */
 /* $begin open_clientfd */
-int open_clientfd(char *hostname, char *portStr) 
-{
+int open_clientfd(char *hostname, char *portStr) {
     int clientfd, error;
 	struct addrinfo *res;
 
