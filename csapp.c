@@ -690,7 +690,8 @@ ssize_t Rio_readn(int fd, void *ptr, size_t nbytes)
 void Rio_writen(int fd, void *usrbuf, size_t n) 
 {
     if (rio_writen(fd, usrbuf, n) != n)
-	unix_error("Rio_writen error");
+	//unix_error("Rio_writen error");
+	printf("Rio_writen error\n");
 }
 
 void Rio_readinitb(rio_t *rp, int fd)
@@ -698,8 +699,7 @@ void Rio_readinitb(rio_t *rp, int fd)
     rio_readinitb(rp, fd);
 } 
 
-ssize_t Rio_readnb(rio_t *rp, void *usrbuf, size_t n) 
-{
+ssize_t Rio_readnb(rio_t *rp, void *usrbuf, size_t n) {
     ssize_t rc;
 
     if ((rc = rio_readnb(rp, usrbuf, n)) < 0)
@@ -707,14 +707,19 @@ ssize_t Rio_readnb(rio_t *rp, void *usrbuf, size_t n)
     return rc;
 }
 
-ssize_t Rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen) 
-{
+ssize_t Rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen) {
     ssize_t rc;
 
     if ((rc = rio_readlineb(rp, usrbuf, maxlen)) < 0)
 	unix_error("Rio_readlineb error");
     return rc;
-} 
+}
+
+void Getaddrinfo(const char *hostname, const char *servname,
+         const struct addrinfo *hints, struct addrinfo **res) {
+	getaddrinfo(hostname, servname, hints, res);
+	//handle errors
+}
 
 /******************************** 
  * Client/server helper functions
@@ -726,27 +731,48 @@ ssize_t Rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen)
  *   Returns -2 and sets h_errno on DNS (gethostbyname) error.
  */
 /* $begin open_clientfd */
-int open_clientfd(char *hostname, int port) 
+int open_clientfd(char *hostname, char *portStr) 
 {
+	printf("opening client connection\n");
     int clientfd;
-    struct hostent *hp;
-    struct sockaddr_in serveraddr;
+	struct addrinfo *res;
+	//char *cause;
 
     if ((clientfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-	return -1; /* check errno for cause of error */
-
-    /* Fill in the server's IP address and port */
-    if ((hp = gethostbyname_r(hostname)) == NULL)
-	return -2; /* check h_errno for cause of error */
-    bzero((char *) &serveraddr, sizeof(serveraddr));
+	{return -1; /* check errno for cause of error */}
+	printf("made socket: %d\n", clientfd);
+	
+	printf("getting addr info\n");
+	Getaddrinfo(hostname, portStr, NULL, &res);
+	/*if(clientfd >= 0 && 
+		connect(clientfd, res->ai_addr, res->ai_addrlen) < 0) {
+		cause = "bad connection";
+		printf("%s\n", cause);
+		return -1;
+	}
+	else {
+		cause = "bad socket";
+		printf("%s\n", cause);
+	}
+	printf("connected to socket: %d\n", clientfd);
+	
+	if(clientfd < 0) {
+		unix_error(cause);
+	}
+	
+	freeaddrinfo(res);
+	return clientfd;*/
+	
+    /*bzero((char *) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
     bcopy((char *)hp->h_addr_list[0], 
 	  (char *)&serveraddr.sin_addr.s_addr, hp->h_length);
-    serveraddr.sin_port = htons(port);
+    serveraddr.sin_port = htons(port);*/
 
-    /* Establish a connection with the server */
-    if (connect(clientfd, (SA *) &serveraddr, sizeof(serveraddr)) < 0)
-	return -1;
+    // Establish a connection with the server 
+	printf("trying to connect to: %d\n", clientfd);
+    if (connect(clientfd, (SA *) res->ai_addr, res->ai_addrlen) < 0)
+	{return -1;}
     return clientfd;
 }
 /* $end open_clientfd */
@@ -789,11 +815,11 @@ int open_listenfd(int port)
 /******************************************
  * Wrappers for the client/server helper routines 
  ******************************************/
-int Open_clientfd(char *hostname, int port) 
+int Open_clientfd(char *hostname, char *portStr) 
 {
     int rc;
 
-    if ((rc = open_clientfd(hostname, port)) < 0) {
+    if ((rc = open_clientfd(hostname, portStr)) < 0) {
 	if (rc == -1)
 	    unix_error("Open_clientfd Unix error");
 	else        

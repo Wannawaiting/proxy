@@ -1,5 +1,6 @@
 //
 #include <stdio.h>
+#include <stdlib.h>
 #include "csapp.h"
 
 #define MAX_CACHE_SIZE 1049000
@@ -21,6 +22,8 @@ int main() {
 	unsigned int clientlen;
     struct sockaddr_in clientaddr;
 	pthread_t tid;
+	
+	signal(SIGPIPE, SIG_IGN);
 	
     listenfd = Open_listenfd(18845);
     while (1) {
@@ -63,7 +66,7 @@ void handleRequest(int *toClientFDPtr) {
     request = correctHeaders(&clientRIO, buf, hostname); //remember to free later
 	
 	printf("correctedHeader:\n%s", request);
-	toServerFD = Open_clientfd(hostname, 80);
+	toServerFD = Open_clientfd(hostname, "80");
 	
 	Rio_readinitb(&serverRIO, toServerFD);
 	

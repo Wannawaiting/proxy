@@ -157,11 +157,11 @@ ssize_t Rio_readnb(rio_t *rp, void *usrbuf, size_t n);
 ssize_t Rio_readlineb(rio_t *rp, void *usrbuf, size_t maxlen);
 
 /* Client/server helper functions */
-int open_clientfd(char *hostname, int portno);
+int open_clientfd(char *hostname, char *portStr);
 int open_listenfd(int portno);
 
 /* Wrappers for client/server helper functions */
-int Open_clientfd(char *hostname, int port);
+int Open_clientfd(char *hostname, char *portStr);
 int Open_listenfd(int port); 
 
 #endif /* __CSAPP_H__ */
