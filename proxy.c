@@ -2,21 +2,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "csapp.h"
+#include "cache.c"
 
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
 
+// global variables
+Cache cache;
 static const char *user_agentStr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 static const char *acceptStr = "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n";
 static const char *accept_encodingStr = "Accept-Encoding: gzip, deflate\r\n";
 static const char *connectionStr = "Connection: close\r\n";
 static const char *proxyConnectionStr = "Proxy-Connection: close\r\n";
 
+//function prototypes
 void handleRequest(int *toClientFDPtr);
 char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr);
 void clienterror(int fd, char *cause, char *errnum, 
 				char *shortmsg, char *longmsg);
 
+				
 int main(int argc, char **argv) {
 	int listenfd, *connfdPtr;
 	unsigned int clientlen;
@@ -29,6 +34,7 @@ int main(int argc, char **argv) {
 	}
 	
 	signal(SIGPIPE, SIG_IGN);
+	cache = newCache(10, MAX_CACHE_SIZE/MAX_OBJECT_SIZE);
 	
     listenfd = Open_listenfd(atoi(argv[1]));
     while (1) {
@@ -41,6 +47,8 @@ int main(int argc, char **argv) {
 		//printf("closing connection...\n");
 		//Close(connfd);
     }
+	
+	freeCache(cache);
 	return 0;
 }
 
@@ -54,13 +62,13 @@ void handleRequest(int *toClientFDPtr) {
 			version[MAXLINE], hostname[MAXLINE], portStr[6]; //max port length is 5 characters
 	hostname[0] = '\0'; portStr[0] = '\0';
     rio_t clientRIO, serverRIO;
-	
-	char *request;
+	char *request, *response;
+	int cacheResponse = 1; //bool weither or not to cache the response
 	
   
     /* Read request line and headers */
     Rio_readinitb(&clientRIO, toClientFD);
-    Rio_readlineb(&clientRIO, buf, MAXLINE);
+    Rio_readlineb(&clientRIO, buf, MAXLINE); //read the get request
     sscanf(buf, "%s %s %s", method, uri, version);
     if (strcasecmp(method, "GET")) { 
         clienterror(toClientFD, method, "501", "Not Implemented",
@@ -71,31 +79,57 @@ void handleRequest(int *toClientFDPtr) {
     request = correctHeaders(&clientRIO, buf, hostname, (char *) portStr); //remember to free later
 	printf("host: %s| port: %s\n", hostname, portStr);
 	printf("correctedHeader:\n%s", request);
-	if(strlen(portStr) == 0) {
-		portStr[0] = '8';
-		portStr[1] = '0';
-		portStr[2] = '\0';
+	
+	//try to find request in cache
+	if((response = getFromCache(cache, request)) != NULL) {
+		Rio_writen(toClientFD, response, strlen(response));
+		cacheResponse = 0;
+		printf("used cache\n");
 	}
-	
-	toServerFD = Open_clientfd(hostname, portStr);
-	
-	// read from server and write to client only if valid connection to server
-	if(toServerFD >= 0) {
-		Rio_readinitb(&serverRIO, toServerFD);
+	else {
+		toServerFD = Open_clientfd(hostname, portStr);
 		
-		//send request
-		Rio_writen(toServerFD, request, strlen(request));
-		
-		//get response and immediatly write it to the client
-		int bufLen;
-		while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
-			Rio_writen(toClientFD, buf, bufLen);
+		// read from server and write to client only if valid connection to server
+		if(toServerFD >= 0) {
+			Rio_readinitb(&serverRIO, toServerFD);
+			
+			//send request
+			Rio_writen(toServerFD, request, strlen(request));
+			
+			//create responseBuf of size 102400
+			response = Malloc((MAX_OBJECT_SIZE+1)*sizeof(char)); //+1 for null terminator
+			response[0] = '\0';
+			
+			//get response and immediatly write it to the client
+			int bufLen;
+			while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
+				Rio_writen(toClientFD, buf, bufLen);
+				//write to responseBuf for caching later, and if no space left, do not cache
+				int newResponseSize = sizeof(char)*(strlen(response)+strlen(buf));
+				if(newResponseSize <= sizeof(response))
+				{strcat(response, buf);}
+				else {cacheResponse = 0;}
+			}
+			Close(toServerFD);
+			
+			if(cacheResponse == 1) {
+				//downsize responseBuf
+				int responseLen = strlen(response);
+				response = realloc(response, responseLen+1); //+1 for null terminator
+				response[responseLen] = '\0';
+			
+				//cache responseBuf, do not free it
+				writeToCache(cache, request, response);
+				printf("wrote into cache\n");
+			}
 		}
-		Close(toServerFD);
 	}
 	
+	if(cacheResponse == 0) {
+		free(response);
+		free(request);
+	}
 	Close(toClientFD);
-	free(request);
 	printf("connection closed...\n");
 	return;
 }

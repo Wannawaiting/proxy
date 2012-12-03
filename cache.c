@@ -341,7 +341,7 @@ void printCache(Cache c){
 /* MAIN ROUTINE */
 /****************/
 //for testing purposes
-
+/*
 int main(){
 	Cache c = newCache(10, 3);
 	char *req = malloc(sizeof(char)*2);
@@ -359,4 +359,4 @@ int main(){
 	printCache(c);
 	freeCache(c);
 	return 0;
-}
+}*/
