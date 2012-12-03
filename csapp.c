@@ -736,7 +736,7 @@ int open_clientfd(char *hostname, int port)
 	return -1; /* check errno for cause of error */
 
     /* Fill in the server's IP address and port */
-    if ((hp = gethostbyname_r(hostname)) == NULL)
+    if ((hp = gethostbyname(hostname)) == NULL)
 	return -2; /* check h_errno for cause of error */
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
