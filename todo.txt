@@ -1,0 +1,5 @@
+proxy todo:
+1. handle errors in Open_clientfd and handleRequest, so it doesnt fault
+	Connection refused
+	
+2. Comment code!
