@@ -6,7 +6,7 @@
 
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
-#define DEBUG(X) //X
+#define DEBUG(X) X
 #define DEBUG1(X) X
 
 
@@ -45,9 +45,8 @@ int main(int argc, char **argv) {
 		connfdPtr = Malloc(sizeof(int));
 		*connfdPtr = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 		printf("connection found...\n");
-		//handleRequest(connfd);
-		//Pthread_create(&tid, NULL, handleRequest, connfdPtr);
-		handleRequest(connfdPtr);
+		Pthread_create(&tid, NULL, handleRequest, connfdPtr);
+		//handleRequest(connfdPtr);
     }
 	
 	freeCache(cache);
@@ -55,7 +54,7 @@ int main(int argc, char **argv) {
 }
 
 void handleRequest(int *toClientFDPtr) {
-	//Pthread_detach(pthread_self());
+	Pthread_detach(Pthread_self());
 	int toClientFD = *toClientFDPtr;
 	free(toClientFDPtr); //we can free early since it just stores a primative
 	
