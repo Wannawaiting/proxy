@@ -1,5 +1,8 @@
 proxy todo:
-1. handle errors in Open_clientfd and handleRequest, so it doesnt fault
+1. include response length varable in node
+2. handle errors in Open_clientfd and handleRequest, so it doesnt fault
 	Connection refused
+	Connection timeout
 	
-2. Comment code!
+	
+3. Comment code!

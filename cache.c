@@ -3,6 +3,8 @@
 #include <string.h>
 #include "csapp.h"
 
+#define NOCACHE(X) X;
+
 /***************/
 /* Node Struct */
 /***************/
@@ -13,11 +15,12 @@ struct Node{
 	Node prev;
 	char *request;
 	char *response;
+	int responseSize;
 	int valid;
 };
 
 //function prototypes
-Node newNode(Node prev, Node next, char *request, char *response);
+Node newNode(Node prev, Node next, char *request, char *response, int responseSize);
 void freeNode(Node n);
 void appendNode(Node n1, Node n2);
 void prependNode(Node n1, Node n2);
@@ -26,7 +29,7 @@ void printNode(Node n);
 
 //returns a pointer to a Node struct
 //uses malloc, so call freeNode at the end of the program
-Node newNode(Node prev, Node next, char *request, char *response){
+Node newNode(Node prev, Node next, char *request, char *response, int responseSize){
 	Node n;
 	if((n = malloc(sizeof(struct Node))) == NULL){
 		printf("malloc error\n");
@@ -36,6 +39,7 @@ Node newNode(Node prev, Node next, char *request, char *response){
 	n->next = next;
 	n->request = request;
 	n->response = response;
+	n->responseSize = responseSize;
 	n->valid = 0;
 	return n;
 }
@@ -130,13 +134,13 @@ Node newList(int n){
 	}
 
 	//first node
-	Node root = newNode(NULL, NULL, NULL, NULL);
+	Node root = newNode(NULL, NULL, NULL, NULL, 0);
 	
 	//create (n-1) more nodes
 	int i;
 	Node temp;
 	for(i = 1; i < n; i++){
-		temp = newNode(NULL, NULL, NULL, NULL);
+		temp = newNode(NULL, NULL, NULL, NULL, 0);
 		appendNode(temp, root);
 	}
 
@@ -176,9 +180,10 @@ struct Cache{
 };
 
 //tries to retrieve a response from cache based on request
-//if found - HIT - move to beginning of set (LRU) and return response
-//if not found - MISS - return NULL
-char *getFromCache(Cache c, char *req){
+//if found - HIT - move to beginning of set (LRU) and return responseSize and copy response to *userResponse
+//if not found - MISS - return -1 and set *userResponse to NULL
+int getFromCache(Cache c, char *req, char **userResponse){
+	NOCACHE(return -1;)
 	//reader initialisation
 	P(&c->all);
 	c->readCount++;
@@ -201,7 +206,8 @@ char *getFromCache(Cache c, char *req){
 				V(&c->write);
 			}
 			V(&c->all);
-			return NULL;
+			//*userResponse = NULL;
+			return -1;
 		}
 
 		if(!strcasecmp(req, node->request)){
@@ -222,11 +228,16 @@ char *getFromCache(Cache c, char *req){
 				c->array[index] = node;
 				prependNode(node, set);
 			}
+			
 			//unlock writers
 			V(&c->write);
-
-			//return the response
-			return node->response;
+			
+			//set the "returned" response
+			//*userResponse = realloc(*userResponse, node->responseSize);
+			memcpy(*userResponse, node->response, node->responseSize);
+			//*userResponse = node->response;
+						
+			return node->responseSize;
 		} else {
 			//keep looking
 			node = node->next;
@@ -241,16 +252,18 @@ char *getFromCache(Cache c, char *req){
 		V(&c->write);
 	}
 	V(&c->all);
-	return NULL;
+	//*userResponse = NULL;
+	return -1;
 }
 
 //writes a request:response pair into the cache
 //eviction policy is LRU
-void writeToCache(Cache c, char *req, char *res){
+void writeToCache(Cache c, char *req, char *res, int resSize){
+	NOCACHE(return;)
 	//lock writers
 	P(&c->write);
 	//new node to insert
-	Node n = newNode(NULL, NULL, req, res);
+	Node n = newNode(NULL, NULL, req, res, resSize);
 	n->valid = 1;
 	//get set
 	int index = hash(req)%(c->length);

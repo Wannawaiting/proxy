@@ -62,8 +62,12 @@ void handleRequest(int *toClientFDPtr) {
 			version[MAXLINE], hostname[MAXLINE], portStr[6]; //max port length is 5 characters
 	hostname[0] = '\0'; portStr[0] = '\0';
     rio_t clientRIO, serverRIO;
-	char *request, *response;
+	char *request;
+	int responseAllocLen = MAX_OBJECT_SIZE;
+	int responseLen = 0;
+	char *response = malloc(responseAllocLen);
 	int cacheResponse = 1; //bool weither or not to cache the response
+
 	
   
     /* Read request line and headers */
@@ -81,11 +85,10 @@ void handleRequest(int *toClientFDPtr) {
 	printf("correctedHeader:\n%s", request);
 	
 	//try to find request in cache
-	if((response = getFromCache(cache, request)) != NULL) {
-		Rio_writen(toClientFD, response, strlen(response)); //we will need a response length field
+	if((responseLen = getFromCache(cache, request, &response)) > 0) {
+		Rio_writen(toClientFD, response, responseLen); //we will need a response length field
 		cacheResponse = 0;
 		printf("used cache\n");
-		//exit(10);
 	}
 	else {
 		toServerFD = Open_clientfd(hostname, portStr);
@@ -98,10 +101,7 @@ void handleRequest(int *toClientFDPtr) {
 			Rio_writen(toServerFD, request, strlen(request));
 			
 			//create responseBuf of size 102400
-			int responseAllocLen = MAX_OBJECT_SIZE;
-			int responseLen = 0;
-			response = malloc(responseAllocLen);
-			
+					
 			//get response and immediatly write it to the client
 			int bufLen;
 			while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
@@ -109,11 +109,9 @@ void handleRequest(int *toClientFDPtr) {
 				//write to responseBuf for caching later, and if no space left, do not cache
 				if(cacheResponse != 0) {
 					int newResponseLen = responseLen+bufLen;
-					if(newResponseLen <= responseAllocLen)
-					{
+					if(newResponseLen <= responseAllocLen) {
 						memcpy(response+responseLen, buf, bufLen);
 						responseLen = newResponseLen;
-						
 					}
 					else {
 						printf("data to large\n");
@@ -125,12 +123,11 @@ void handleRequest(int *toClientFDPtr) {
 			
 			if(cacheResponse != 0) {
 				//downsize responseBuf
-				response = realloc(response, responseLen); //+1 for null terminator
+				response = realloc(response, responseLen);
 			
 				//cache responseBuf, do not free it
-				writeToCache(cache, request, response);
+				writeToCache(cache, request, response, responseLen);
 				printf("wrote into cache\n");
-				//exit(12);
 			}
 		}
 	}
@@ -159,8 +156,6 @@ char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr) {
 	strcat(result, proxyConnectionStr);
 	strcat(result, connectionStr);
 	resultAllocLen = resultActLen-2;
-	
-	
 	
     while(strcmp(buf, "\r\n") && strcmp(buf, "\n")) {
 		char key[MAXLINE], value[MAXLINE], *append;
