@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -g -Wall
 LDFLAGS = -lpthread
 
-all: proxy
+all: cache2
 
 csapp.o: csapp.c csapp.h
 	$(CC) $(CFLAGS) -c csapp.c
@@ -13,7 +13,12 @@ proxy.o: proxy.c csapp.h
 cache.o: cache.c
 	$(CC) $(CFLAGS) -c cache.c
 
+cache2.o: cache2.c
+	$(CC) $(CFLAGS) -c cache2.c
+
 cache: cache.o csapp.o
+
+cache2: cache2.o csapp.o
 
 proxy: proxy.o csapp.o
 
