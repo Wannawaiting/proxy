@@ -2,10 +2,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "csapp.h"
-#include "cache.c"
+#include "cache2.c"
 
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
+#define DEBUG(X) //X
+#define DEBUG1(X) X
+
 
 // global variables
 Cache cache;
@@ -34,7 +37,7 @@ int main(int argc, char **argv) {
 	}
 	
 	signal(SIGPIPE, SIG_IGN);
-	cache = newCache(10, MAX_CACHE_SIZE/MAX_OBJECT_SIZE);
+	cache = newCache(1, MAX_OBJECT_SIZE, MAX_CACHE_SIZE);
 	
     listenfd = Open_listenfd(atoi(argv[1]));
     while (1) {
@@ -43,9 +46,8 @@ int main(int argc, char **argv) {
 		*connfdPtr = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 		printf("connection found...\n");
 		//handleRequest(connfd);
-		Pthread_create(&tid, NULL, handleRequest, connfdPtr);
-		//printf("closing connection...\n");
-		//Close(connfd);
+		//Pthread_create(&tid, NULL, handleRequest, connfdPtr);
+		handleRequest(connfdPtr);
     }
 	
 	freeCache(cache);
@@ -53,7 +55,7 @@ int main(int argc, char **argv) {
 }
 
 void handleRequest(int *toClientFDPtr) {
-	Pthread_detach(pthread_self());
+	//Pthread_detach(pthread_self());
 	int toClientFD = *toClientFDPtr;
 	free(toClientFDPtr); //we can free early since it just stores a primative
 	
@@ -81,16 +83,20 @@ void handleRequest(int *toClientFDPtr) {
     }
 	
     request = correctHeaders(&clientRIO, buf, hostname, (char *) portStr); //remember to free later
-	printf("host: %s| port: %s\n", hostname, portStr);
-	printf("correctedHeader:\n%s", request);
+	//DEBUG(printf("host: %s| port: %s\n", hostname, portStr);)
+	//DEBUG(printf("correctedHeader:\n%s", request);)
 	
 	//try to find request in cache
-	if((responseLen = getFromCache(cache, request, &response)) > 0) {
+	if((responseLen = readCache(cache, request, (void **) &response)) > 0) {
+		DEBUG1(printf("----use cache---\n");)
+		DEBUG(printf("found in cache: \n");)
+		DEBUG(printf("%s\n", response);)
 		Rio_writen(toClientFD, response, responseLen); //we will need a response length field
 		cacheResponse = 0;
-		printf("used cache\n");
 	}
 	else {
+		DEBUG1(printf("----not using cache---\n");)
+		
 		toServerFD = Open_clientfd(hostname, portStr);
 		
 		// read from server and write to client only if valid connection to server
@@ -106,15 +112,18 @@ void handleRequest(int *toClientFDPtr) {
 			int bufLen;
 			while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
 				Rio_writen(toClientFD, buf, bufLen);
+				//printf("buf: %s\n", buf);
 				//write to responseBuf for caching later, and if no space left, do not cache
 				if(cacheResponse != 0) {
-					int newResponseLen = responseLen+bufLen;
+					int newResponseLen = responseLen+bufLen+1;
 					if(newResponseLen <= responseAllocLen) {
-						memcpy(response+responseLen, buf, bufLen);
+						DEBUG(printf("copying: %s, bufLen: %d to response(%x)+responseLen(%x) = %x\n", buf, bufLen, response, responseLen, response+responseLen);)
+						memcpy((void *)(response+responseLen+1), buf, bufLen+1);
 						responseLen = newResponseLen;
+						DEBUG(printf("copied: %s\n", response);)
 					}
 					else {
-						printf("data to large\n");
+						DEBUG1(printf("data to large\n");)
 						cacheResponse = 0;
 					}
 				}
@@ -126,16 +135,17 @@ void handleRequest(int *toClientFDPtr) {
 				response = realloc(response, responseLen);
 			
 				//cache responseBuf, do not free it
-				writeToCache(cache, request, response, responseLen);
-				printf("wrote into cache\n");
+				writeCache(cache, request, (void *) response, responseLen);
+				DEBUG1(printf("-----wrote into cache--------\n");)
+				DEBUG(readCache(cache, request, (void **) &response);)
+				DEBUG(printf("cached: %s\n", response);)
+				//exit(0);
 			}
 		}
 	}
 	
-	if(cacheResponse == 0) {
-		free(response);
-		free(request);
-	}
+	free(response);
+	free(request);
 	Close(toClientFD);
 	printf("connection closed...\n");
 	return;

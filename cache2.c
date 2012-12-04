@@ -3,7 +3,7 @@
 #include <strings.h>
 #include "csapp.h"
 
-#define NOCACHE(X) X;
+#define DEBUG(X) //X
 
 
 /***********
@@ -56,6 +56,7 @@ Cache newCache(int numRows, int maxBlockSize, int maxCacheSize);
 int freeCache(Cache c);
 void evictIfNecessary(Cache c, int llStartIdx, int evictSize);
 int readCache(Cache c, char *req, void **retRes);
+void writeCache(Cache c, char *req, void *res, int resSize);
 
 //Util
 unsigned long hash(char *str);
@@ -71,37 +72,40 @@ Node newNode(Node next, char *req, void *res, int resSize) {
 	
 	n->req = (char *) calloc(strlen(req)+1, sizeof(char));
 	strcpy(n->req, req);
-	printf("n->req: %s\n", n->req);
+	DEBUG(printf("n->req: %s\n", n->req);)
 	
 	n->res = (void *) malloc(resSize);
 	memcpy(n->res, res, resSize);
 	n->resSize = resSize;
 	
-	printf("new Node: ");
-	printNode(n);
+	DEBUG(printf("new Node: ");)
+	DEBUG(printNode(n);)
 	return n;
 }
 
 int freeNode(Node n) {
 	if(n == NULL) {return -1;}
 	
-	printf("req\n");
+	//DEBUG(printf("req\n");)
 	if(n->req != NULL) {free(n->req);}
-	printf("res\n");
+	//DEBUG(printf("res\n");)
 	if(n->res != NULL) {free(n->res);}
 	
-	printf("freeSize\n");
+	//DEBUG(printf("freeSize\n");)
 	int freeSize = n->resSize;
 	
-	printf("free n\n");
+	//DEBUG(printf("free n\n");)
 	free(n);
-	printf("return\n");
+	//DEBUG(printf("return\n");)
 	return freeSize;
 }
 
 void printNode(Node n) {
-	printf("| node: %x, next: %x, req: %s, res: %s, resSize: %d |\n",
-		n, n->next, n->req, n->res, n->resSize);
+	printf("| node: %x, \n", n);
+	//printf("next: %x, \n", n->next);
+	//printf("req: %s, \n", n->req);
+	//printf("res: %s, \n", (char *) n->res);
+	//printf("resSize: %d |\n", n->resSize);
 }
 
 /************************
@@ -117,26 +121,26 @@ LinkedList newLinkedList(Node head, Node tail) {
 
 int freeLinkedList(LinkedList ll) {
 	if(ll == NULL) {return -1;}
-	printf("ll: %x\n", ll);
+	DEBUG(printf("ll: %x\n", ll);)
 	int freeSize = 0;
 	int count = 0;
 	while(ll->head != NULL) {
-		printf("id: %d\n", count);
+		DEBUG(printf("id: %d\n", count);)
 		Node n = ll->head;
 		ll->head = n->next;
-		printf("asdf n: %x\n", n);
+		DEBUG(printf("asdf n: %x\n", n);)
 		freeSize += freeNode(n);
 		count++;
 	}
 	
-	printf("free ll\n");
+	DEBUG(printf("free ll\n");)
 	free(ll);
 	return freeSize;
 }
 
 int evictLinkedList(LinkedList ll) {
 	if(ll == NULL) {return -2;}
-	
+	DEBUG(printf("evicting...\n");)
 	int evictSize = -1;
 	Node pTail = ll->head;
 	if(pTail != NULL && pTail->next != ll->tail) {
@@ -152,6 +156,7 @@ int evictLinkedList(LinkedList ll) {
 		ll->tail = pTail;
 		ll->tail->next = NULL;
 	}
+	exit(0);
 	return evictSize;
 }
 
@@ -162,12 +167,12 @@ Node findNode(LinkedList ll, char *req, Node *retPrevNode) {
 	
 	Node n = ll->head;
 	*retPrevNode = NULL;
-	printf("searching: \n");
-	printNode(n);
+	DEBUG(printf("searching: \n");)
+	DEBUG(printNode(n);)
 	
 	while(n != NULL && strcasecmp(req, n->req) != 0) {
-		printf("searching: ");
-		printNode(n);
+		DEBUG(printf("searching: ");)
+		DEBUG(printNode(n);)
 		*retPrevNode = n;
 		n = n->next;
 	}
@@ -226,7 +231,6 @@ int freeCache(Cache c) {
 void evictIfNecessary(Cache c, int llStartIdx, int evictSize) {
 	if(0 < evictSize && evictSize <= c->maxBlockSize
 		&& c->cachedSize + evictSize > c->maxCacheSize) {
-		printf("evicting...\n");
 		evictSize -= (c->maxCacheSize - c->cachedSize);
 		
 		int rInc;
@@ -240,18 +244,18 @@ void evictIfNecessary(Cache c, int llStartIdx, int evictSize) {
 			}
 		}
 	}
-	else {printf("no need to evict\n");}
+	else {DEBUG(printf("no need to evict\n");)}
 }
 
 int readCache(Cache c, char *req, void **retRes) {
 	int llIdx = (hash(req))%(c->numRows);
 	Node pN;
-	printf("read %s from llIdx: %d\n", req, llIdx);
-	printNode(c->arr[llIdx]->head);
+	DEBUG(printf("read %s from llIdx: %d\n", req, llIdx);)
+	DEBUG(printNode(c->arr[llIdx]->head);)
 	Node n = findNode(c->arr[llIdx], req, &pN);
 	
 	if(n != NULL) {
-		printf("found res: %s\n", (char *) n->res);
+		//printf("found res: %s\n", (char *) n->res);
 		*retRes = realloc(*retRes, n->resSize);
 		memcpy(*retRes, n->res, n->resSize);
 		//lock all
@@ -260,14 +264,13 @@ int readCache(Cache c, char *req, void **retRes) {
 		return n->resSize;
 	}
 	
-	*retRes = NULL;
 	return -1;
 }
 
 //assumes req is not in cache, otherwise creates a duplicate
 void writeCache(Cache c, char *req, void *res, int resSize) {
 	int llIdx = (hash(req))%(c->numRows);
-	printf("writing %s to llIdx: %d\n", req, llIdx);
+	DEBUG(printf("writing %s to llIdx: %d\n", req, llIdx);)
 	
 	//lock All
 	evictIfNecessary(c, llIdx, resSize);
@@ -276,8 +279,8 @@ void writeCache(Cache c, char *req, void *res, int resSize) {
 	if(c->arr[llIdx]->tail == NULL) {
 		c->arr[llIdx]->tail = c->arr[llIdx]->head;
 	}
-	printf("wrote node: ");
-	printNode(c->arr[llIdx]->head);
+	DEBUG(printf("wrote node: ");)
+	DEBUG(printNode(c->arr[llIdx]->head);)
 	//unlock all
 	return;
 }
@@ -303,7 +306,7 @@ unsigned long hash(char *str){
 /* Testing */
 /****************/
 //for testing purposes
-
+/*
 int main(){
 	Cache c = newCache(10, 102400, 1049000);
 	char *req = malloc(sizeof(char)*4);
@@ -325,3 +328,5 @@ int main(){
 	free(cachedRes);
 	return freeCache(c);
 }
+*/
+
