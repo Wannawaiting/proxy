@@ -82,9 +82,10 @@ void handleRequest(int *toClientFDPtr) {
 	
 	//try to find request in cache
 	if((response = getFromCache(cache, request)) != NULL) {
-		Rio_writen(toClientFD, response, strlen(response));
+		Rio_writen(toClientFD, response, strlen(response)); //we will need a response length field
 		cacheResponse = 0;
 		printf("used cache\n");
+		//exit(10);
 	}
 	else {
 		toServerFD = Open_clientfd(hostname, portStr);
@@ -97,30 +98,39 @@ void handleRequest(int *toClientFDPtr) {
 			Rio_writen(toServerFD, request, strlen(request));
 			
 			//create responseBuf of size 102400
-			response = Malloc((MAX_OBJECT_SIZE+1)*sizeof(char)); //+1 for null terminator
-			response[0] = '\0';
+			int responseAllocLen = MAX_OBJECT_SIZE;
+			int responseLen = 0;
+			response = malloc(responseAllocLen);
 			
 			//get response and immediatly write it to the client
 			int bufLen;
 			while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
 				Rio_writen(toClientFD, buf, bufLen);
 				//write to responseBuf for caching later, and if no space left, do not cache
-				int newResponseSize = sizeof(char)*(strlen(response)+strlen(buf));
-				if(newResponseSize <= sizeof(response))
-				{strcat(response, buf);}
-				else {cacheResponse = 0;}
+				if(cacheResponse != 0) {
+					int newResponseLen = responseLen+bufLen;
+					if(newResponseLen <= responseAllocLen)
+					{
+						memcpy(response+responseLen, buf, bufLen);
+						responseLen = newResponseLen;
+						
+					}
+					else {
+						printf("data to large\n");
+						cacheResponse = 0;
+					}
+				}
 			}
 			Close(toServerFD);
 			
-			if(cacheResponse == 1) {
+			if(cacheResponse != 0) {
 				//downsize responseBuf
-				int responseLen = strlen(response);
-				response = realloc(response, responseLen+1); //+1 for null terminator
-				response[responseLen] = '\0';
+				response = realloc(response, responseLen); //+1 for null terminator
 			
 				//cache responseBuf, do not free it
 				writeToCache(cache, request, response);
 				printf("wrote into cache\n");
+				//exit(12);
 			}
 		}
 	}
@@ -157,11 +167,12 @@ char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr) {
 		
 		Rio_readlineb(rp, buf, MAXLINE);
 		sscanf(buf, "%s %s", key, value);
-		if(!strcasecmp(key, "cookie:") || !strcasecmp(key, "proxy-connection:") 
+		append = "";
+		/*if(!strcasecmp(key, "cookie:") || !strcasecmp(key, "proxy-connection:") 
 			|| !strcasecmp(key, "connection:") || !strcasecmp(key, "accept-encoding:")
 			|| !strcasecmp(key, "accept:") || !strcasecmp(key, "user-agent:")) 
-		{append = "";}
-		else {
+		{append = "";}*/
+		if(!strcasecmp(key , "host:") || !strcasecmp(key, "accept-language:")){
 			append = buf;
 			if(!strcasecmp(key, "host:")) {
 				char *portStrTmp, *hostTmp;
