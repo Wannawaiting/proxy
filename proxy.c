@@ -21,8 +21,6 @@
 
 #define MAX_CACHE_SIZE 1049000
 #define MAX_OBJECT_SIZE 102400
-#define DEBUG(X) //X
-#define DEBUG1(X) //X
 
 
 // global variables
