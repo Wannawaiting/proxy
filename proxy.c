@@ -21,10 +21,12 @@ int numThreads = 0;
 int maxThreads = 16;
 
 //function prototypes
+void sigintHandler(int sig);
 void handleRequest(int *toClientFDPtr);
 char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr);
 void clienterror(int fd, char *cause, char *errnum, 
 				char *shortmsg, char *longmsg);
+
 
 void sigintHandler(int sig) {
 	printf("freeing cache\n");
