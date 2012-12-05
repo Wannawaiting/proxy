@@ -18,9 +18,7 @@ static const char *accept_encodingStr = "Accept-Encoding: gzip, deflate\r\n";
 static const char *connectionStr = "Connection: close\r\n";
 static const char *proxyConnectionStr = "Proxy-Connection: close\r\n";
 int numThreads = 0;
-int maxThreads = 8;
-int cachedResponseLen = 0;
-void *cachedResponse;
+int maxThreads = 16;
 
 //function prototypes
 void handleRequest(int *toClientFDPtr);
@@ -28,6 +26,12 @@ char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr);
 void clienterror(int fd, char *cause, char *errnum, 
 				char *shortmsg, char *longmsg);
 
+void sigintHandler(int sig) {
+	printf("freeing cache\n");
+	printf("stats: numRuns: %d\n", numThreads);
+	freeCache(cache);
+	exit(0);
+}
 				
 int main(int argc, char **argv) {
 	int listenfd, *connfdPtr;
@@ -40,8 +44,9 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 	
-	signal(SIGPIPE, SIG_IGN);
-	cache = newCache(1, MAX_OBJECT_SIZE, MAX_CACHE_SIZE);
+	Signal(SIGPIPE, SIG_IGN);
+	Signal(SIGTSTP, sigintHandler);
+	cache = newCache(10, MAX_OBJECT_SIZE, MAX_CACHE_SIZE);
 	
     listenfd = Open_listenfd(atoi(argv[1]));
     while (1) {
@@ -50,9 +55,9 @@ int main(int argc, char **argv) {
 		*connfdPtr = Accept(listenfd, (SA *)&clientaddr, &clientlen);
 		printf("connection found...\n");
 		//while(numThreads >= maxThreads) {}
-		Pthread_create(&tid, NULL, handleRequest, connfdPtr);
+		//Pthread_create(&tid, NULL, handleRequest, connfdPtr);
 		numThreads++;
-		//handleRequest(connfdPtr);
+		handleRequest(connfdPtr);
     }
 	
 	freeCache(cache);
@@ -62,7 +67,7 @@ int main(int argc, char **argv) {
 }
 
 void handleRequest(int *toClientFDPtr) {
-	Pthread_detach(Pthread_self());
+	//Pthread_detach(Pthread_self());
 	int toClientFD = *toClientFDPtr;
 	free(toClientFDPtr); //we can free early since it just stores a primative
 	
@@ -75,6 +80,7 @@ void handleRequest(int *toClientFDPtr) {
 	int responseAllocLen = MAX_OBJECT_SIZE;
 	int responseLen = 0;
 	char *response = malloc(responseAllocLen);
+	void *response2 = response+1;
 	int cacheResponse = 1; //bool weither or not to cache the response
 
 	
@@ -94,14 +100,15 @@ void handleRequest(int *toClientFDPtr) {
 	printf("correctedHeader:\n%s", request);
 	
 	//try to find request in cache
-	void *response2 = response+1;
 	if((responseLen = readCache(cache, request, (void **) &response2)) > 0) {
 		DEBUG1(printf("----use cache---\n");)
 		DEBUG(printf("found in cache: \n");)
 		DEBUG(printf("%s\n", response);)
+		
 		response[0] = 'H';
-		int readDiff = memcmp(response, cachedResponse, cachedResponseLen);
-		printf("readDiff: %d\n", readDiff);
+		
+		/*int readDiff = memcmp(response, cachedResponse, cachedResponseLen);
+		printf("readDiff: %d\n", readDiff);*/
 		Rio_writen(toClientFD, response, responseLen); //we will need a response length field
 		cacheResponse = 0;
 		//exit(0);
@@ -118,13 +125,10 @@ void handleRequest(int *toClientFDPtr) {
 			//send request
 			Rio_writen(toServerFD, request, strlen(request));
 			
-			//create responseBuf of size 102400
-					
 			//get response and immediatly write it to the client
 			int bufLen;
 			while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
 				Rio_writen(toClientFD, buf, bufLen);
-				//printf("buf: %s\n", buf);
 				//write to responseBuf for caching later, and if no space left, do not cache
 				if(cacheResponse != 0) {
 					int newResponseLen = responseLen+bufLen;
@@ -132,7 +136,7 @@ void handleRequest(int *toClientFDPtr) {
 						DEBUG(printf("copying: %s, bufLen: %d to response(%x)+responseLen(%x) = %x\n", buf, bufLen, response, responseLen, response+responseLen);)
 						memcpy((char *)response+responseLen, buf, bufLen);
 						responseLen = newResponseLen;
-						DEBUG(printf("copied: %s\n", response);)
+						DEBUG(printf("copied: %s\n", response);)		
 					}
 					else {
 						DEBUG1(printf("data to large\n");)
@@ -145,27 +149,20 @@ void handleRequest(int *toClientFDPtr) {
 			if(cacheResponse != 0) {				
 				writeCache(cache, request, (void *) response, responseLen);
 				DEBUG1(printf("-----wrote into cache--------\n");)
-				
-				cachedResponse = malloc(responseLen);
-				readCache(cache, request, (void **) &cachedResponse);
-				DEBUG(printf("cached: %s\n", response);)
-				int diff1 = memcmp(response, cachedResponse, responseLen);
-				
-				free(cachedResponse);
-				cachedResponse = malloc(responseLen);
-				cachedResponseLen = responseLen;
-				readCache(cache, request, (void **) &cachedResponse);
-				int diff2 = memcmp(response, cachedResponse, responseLen);
-				printf("mmDiff1: %d, mmDiff2: %d\n", diff1, diff2);
 			}
 		}
 	}
 	
+	printf("freeing responsePtr: %x,\n %s\n", response, response);
+	if(response == NULL) {printf("true\n");exit(0);}
 	free(response);
+	//exit(0);
+	printf("freeing request\n");
 	free(request);
+	printf("closing clientFd\n");
 	Close(toClientFD);
-	printf("connection closed...\n");
-	numThreads--;
+	printf("connection closed\n\n");
+	//numThreads--;
 	return;
 }
 
