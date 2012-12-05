@@ -53,21 +53,21 @@ int main(int argc, char **argv) {
 		clientlen = sizeof(clientaddr);
 		connfdPtr = Malloc(sizeof(int));
 		*connfdPtr = Accept(listenfd, (SA *)&clientaddr, &clientlen);
-		printf("connection found...\n");
+		DEBUG(printf("connection found...\n");)
 		//while(numThreads >= maxThreads) {}
-		//Pthread_create(&tid, NULL, handleRequest, connfdPtr);
+		Pthread_create(&tid, NULL, handleRequest, connfdPtr);
 		numThreads++;
-		handleRequest(connfdPtr);
+		//handleRequest(connfdPtr);
     }
 	
-	freeCache(cache);
+	//freeCache(cache);
 	/*void *ret;
 	Pthread_exit(ret);*/
 	return 0;
 }
 
 void handleRequest(int *toClientFDPtr) {
-	//Pthread_detach(Pthread_self());
+	Pthread_detach(Pthread_self());
 	int toClientFD = *toClientFDPtr;
 	free(toClientFDPtr); //we can free early since it just stores a primative
 	
@@ -79,7 +79,7 @@ void handleRequest(int *toClientFDPtr) {
 	char *request;
 	int responseAllocLen = MAX_OBJECT_SIZE;
 	int responseLen = 0;
-	char *response = malloc(responseAllocLen);
+	char *response = Malloc(responseAllocLen);
 	void *response2 = response+1;
 	int cacheResponse = 1; //bool weither or not to cache the response
 
@@ -96,8 +96,8 @@ void handleRequest(int *toClientFDPtr) {
     }
 	
     request = correctHeaders(&clientRIO, buf, hostname, (char *) portStr); //remember to free later
-	//DEBUG(printf("host: %s| port: %s\n", hostname, portStr);)
-	printf("correctedHeader:\n%s", request);
+	DEBUG(printf("host: %s| port: %s\n", hostname, portStr);)
+	DEBUG(printf("correctedHeader:\n%s", request);)
 	
 	//try to find request in cache
 	if((responseLen = readCache(cache, request, (void **) &response2)) > 0) {
@@ -134,7 +134,8 @@ void handleRequest(int *toClientFDPtr) {
 					int newResponseLen = responseLen+bufLen;
 					if(newResponseLen <= responseAllocLen) {
 						DEBUG(printf("copying: %s, bufLen: %d to response(%x)+responseLen(%x) = %x\n", buf, bufLen, response, responseLen, response+responseLen);)
-						memcpy((char *)response+responseLen, buf, bufLen);
+						void *resWritePos = (response+responseLen);
+						memcpy((char *)resWritePos, buf, bufLen);
 						responseLen = newResponseLen;
 						DEBUG(printf("copied: %s\n", response);)		
 					}
@@ -146,22 +147,20 @@ void handleRequest(int *toClientFDPtr) {
 			}
 			Close(toServerFD);
 			
-			if(cacheResponse != 0) {				
+			if(cacheResponse != 0) {
 				writeCache(cache, request, (void *) response, responseLen);
 				DEBUG1(printf("-----wrote into cache--------\n");)
 			}
 		}
 	}
 	
-	printf("freeing responsePtr: %x,\n %s\n", response, response);
-	if(response == NULL) {printf("true\n");exit(0);}
-	free(response);
-	//exit(0);
-	printf("freeing request\n");
+	DEBUG(printf("freeing responsePtr: %x,\n %s\n", response, response);)
+	DEBUG(if(response == NULL) {printf("true\n");exit(0);})
+	//free(response);
+	
 	free(request);
-	printf("closing clientFd\n");
 	Close(toClientFD);
-	printf("connection closed\n\n");
+	DEBUG(printf("connection closed\n\n");)
 	//numThreads--;
 	return;
 }
@@ -171,7 +170,7 @@ char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr) {
 			+strlen(user_agentStr)+strlen(proxyConnectionStr)
 			+strlen(connectionStr)+2; //+2 for /r/n
 	int resultAllocLen = 0;
-	char *result = (char *) malloc(sizeof(char)*(resultActLen+1)); //+1 for null term
+	char *result = (char *) Malloc(sizeof(char)*(resultActLen+1)); //+1 for null term
 	result[resultAllocLen] = '\0';
 	
 	strcpy(result, buf); //buf is the get request line
@@ -208,7 +207,7 @@ char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr) {
 		if(sizeNeeded >= resultActLen) {
 			int resizeSize = 2*resultAllocLen;
 			if(sizeNeeded > resizeSize) {resizeSize = sizeNeeded;}
-			result = (char *) realloc(result, sizeof(char)*(resizeSize+1)); //+1 for null terminator
+			result = (char *) Realloc(result, sizeof(char)*(resizeSize+1)); //+1 for null terminator
 			resultActLen = resizeSize;
 		}
 		
@@ -219,7 +218,7 @@ char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr) {
 	//end request
 	
 	if(resultAllocLen+2 < resultActLen) {//downsize if necessary, +2 because we are saving space of '\r\n'
-		result = (char *) realloc(result, sizeof(char)*(resultAllocLen+3)); //+3 for null terminator and EOF flag ('\r\n')
+		result = (char *) Realloc(result, sizeof(char)*(resultAllocLen+3)); //+3 for null terminator and EOF flag ('\r\n')
 	}
 	result[resultAllocLen] = '\r'; result[resultAllocLen+1] = '\n'; result[resultAllocLen+2] = '\0';
 	

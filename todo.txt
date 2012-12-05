@@ -1,9 +1,7 @@
 proxy todo:
-0. sighandler to freeCache
 1. handle errors in Open_clientfd and handleRequest, so it doesnt fault
 	Connection refused
 	Connection timeout
+2. 
 2. style
-2.5. hash only by GET and Host
-3. limit threads
 4. lock by row rather than whole cache

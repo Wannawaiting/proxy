@@ -746,7 +746,7 @@ int open_clientfd(char *hostname, char *portStr) {
 	if((error = Getaddrinfo(hostname, portStr, NULL, &res)) < 0) 
 	{
 		freeaddrinfo(res);
-		return error;
+		return -2;
 	}
 
     // Establish a connection with the server

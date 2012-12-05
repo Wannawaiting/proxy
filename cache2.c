@@ -82,8 +82,7 @@ Node newNode(Node next, char *req, void *res, int resSize) {
 	/*store response as void * because it can be binary data, 
 	so this will avoid coder error*/
 	n->res = (void *) Malloc(resSize);
-	memcpy(n->res, res, resSize);
-	//printf("newNode mmDiff: %d\n", memcmp(n->res, res, resSize));
+	n->res = memcpy(n->res, res, resSize);
 	n->resSize = resSize;
 	
 	DEBUGC(printf("new Node: ");)
@@ -91,39 +90,38 @@ Node newNode(Node next, char *req, void *res, int resSize) {
 	return n;
 }
 
-//Node Destroyer
+/* Node Destroyer
+ * return -1 if n is NULL
+ * returns number of cache bytes freed (n->resSize) if able to free */
 int freeNode(Node n) {
 	if(n == NULL) {return -1;}
 	
 	/*do not free n->next since it is just a pointer which is 
 	instantiated outside of this node's construction*/
 	
-	//DEBUGC(printf("req\n");)
 	if(n->req != NULL) {free(n->req);}
-	//DEBUGC(printf("res\n");)
 	if(n->res != NULL) {free(n->res);}
 	
-	//DEBUGC(printf("freeSize\n");)
 	int freeSize = n->resSize;
 	
-	//DEBUGC(printf("free n\n");)
 	free(n);
-	//DEBUGC(printf("return\n");)
 	return freeSize;
 }
 
+//Pretty Printing of a Node
 void printNode(Node n) {
 	printf("| node: %x, \n", n);
-	//printf("next: %x, \n", n->next);
-	//printf("req: %s, \n", n->req);
-	//printf("res: %s, \n", (char *) n->res);
-	//printf("resSize: %d |\n", n->resSize);
+	printf("next: %x, \n", n->next);
+	printf("req: %s, \n", n->req);
+	printf("res: %s, \n", (char *) n->res);
+	printf("resSize: %d |\n", n->resSize);
 }
 
 /************************
  * LinkedList Functions *
  ************************/
  
+//LinkedList Contstructor
 LinkedList newLinkedList(Node head, Node tail) {
 	LinkedList ll = (LinkedList) Malloc(sizeof(struct LinkedList));
 	ll->head = head;
@@ -131,18 +129,22 @@ LinkedList newLinkedList(Node head, Node tail) {
 	return ll;
 }
 
+/* LinkedList Destoryer
+ * return -1 if ll is Null 
+ * returns total number of cache bytes freed if able to free*/
 int freeLinkedList(LinkedList ll) {
 	if(ll == NULL) {return -1;}
 	DEBUGC(printf("ll: %x\n", ll);)
 	int freeSize = 0;
-	int count = 0;
+	
+	/*iterate through linkedlist and free each node 
+	and keep track of the total cache bytes freed*/
 	while(ll->head != NULL) {
 		DEBUGC(printf("id: %d\n", count);)
 		Node n = ll->head;
 		ll->head = n->next;
 		DEBUGC(printf("asdf n: %x\n", n);)
 		freeSize += freeNode(n);
-		count++;
 	}
 	
 	DEBUGC(printf("free ll\n");)
@@ -150,8 +152,13 @@ int freeLinkedList(LinkedList ll) {
 	return freeSize;
 }
 
+/* Evict a the LRU Node (ll->tail) from the LinkedList
+ * return -2 if ll is NULL
+ * return -1 if no LRU Node found
+ * return size of evicted node if able to evict */
 int evictLinkedList(LinkedList ll) {
 	if(ll == NULL) {return -2;}
+	
 	DEBUGC(printf("evicting...\n");)
 	int evictSize = -1;
 	Node pTail = ll->head;
@@ -168,10 +175,14 @@ int evictLinkedList(LinkedList ll) {
 		ll->tail = pTail;
 		ll->tail->next = NULL;
 	}
-	//exit(0);
+	
 	return evictSize;
 }
 
+/* Iterate through LinkedList ll till we find a Node n where n->req == req
+ * return Null if any of the inputs are Null
+ * return Null if no node found
+ * return Node n when found */
 Node findNode(LinkedList ll, char *req, Node *retPrevNode) {
 	if(ll == NULL || req == NULL || retPrevNode == NULL) {
 		return NULL;
