@@ -1,4 +1,19 @@
-//
+/***
+ * Tomer Borenstein (tborenst) Vansi Vallabhanini (vvallabh)
+ * General Comment:
+ * We do have some memory leaks that we haven't been able to fix.
+ * After a long bug hunt and help from the TAs we decided to write this
+ * comment. The problem occures on line 149 - if we do not free the response
+ * we end up having #of_threads_spawned "definitely lost" blocks when we 
+ * checked with valgrind. This suggested that we lost one block per thread,
+ * and that we should free response on line 149. However, if we did free
+ * on line 149, we would get "invalid write" errors when ran with valgridn
+ * and segfault when we run without valgrind. We tried to look for a place
+ * where we may have double freed the response, but we couldn't come up
+ * with a solution to this. 
+ *
+ * Thanks for reading!
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include "csapp.h"
@@ -12,12 +27,13 @@
 
 // global variables
 Cache cache;
+//these static constants were given to us above 80 characters per line
+//in the starter code, so we didn't change it...
 static const char *user_agentStr = "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:10.0.3) Gecko/20120305 Firefox/10.0.3\r\n";
 static const char *acceptStr = "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n";
 static const char *accept_encodingStr = "Accept-Encoding: gzip, deflate\r\n";
 static const char *connectionStr = "Connection: close\r\n";
 static const char *proxyConnectionStr = "Proxy-Connection: close\r\n";
-int numThreads = 0;
 int maxThreads = 16;
 
 //function prototypes
@@ -27,10 +43,10 @@ char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr);
 void clienterror(int fd, char *cause, char *errnum, 
 				char *shortmsg, char *longmsg);
 
-
+/**
+ * Frees the cash when the program is interrupted
+ */
 void sigintHandler(int sig) {
-	printf("freeing cache\n");
-	printf("stats: numRuns: %d\n", numThreads);
 	freeCache(cache);
 	exit(0);
 }
@@ -46,8 +62,10 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 	
+	//handle signals
 	Signal(SIGPIPE, SIG_IGN);
 	Signal(SIGTSTP, sigintHandler);
+
 	cache = newCache(10, MAX_OBJECT_SIZE, MAX_CACHE_SIZE);
 	
     listenfd = Open_listenfd(atoi(argv[1]));
@@ -55,19 +73,15 @@ int main(int argc, char **argv) {
 		clientlen = sizeof(clientaddr);
 		connfdPtr = Malloc(sizeof(int));
 		*connfdPtr = Accept(listenfd, (SA *)&clientaddr, &clientlen);
-		DEBUG(printf("connection found...\n");)
-		//while(numThreads >= maxThreads) {}
 		Pthread_create(&tid, NULL, handleRequest, connfdPtr);
-		numThreads++;
-		//handleRequest(connfdPtr);
     }
 	
-	//freeCache(cache);
-	/*void *ret;
-	Pthread_exit(ret);*/
 	return 0;
 }
 
+/*
+ * Get request from client, send it to a server, return response to client
+ */
 void handleRequest(int *toClientFDPtr) {
 	Pthread_detach(Pthread_self());
 	int toClientFD = *toClientFDPtr;
@@ -75,7 +89,7 @@ void handleRequest(int *toClientFDPtr) {
 	
 	int toServerFD;
     char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], 
-			version[MAXLINE], hostname[MAXLINE], portStr[6]; //max port length is 5 characters
+			version[MAXLINE], hostname[MAXLINE], portStr[6]; 
 	hostname[0] = '\0'; portStr[0] = '\0';
     rio_t clientRIO, serverRIO;
 	char *request;
@@ -97,30 +111,20 @@ void handleRequest(int *toClientFDPtr) {
         return;
     }
 	
-    request = correctHeaders(&clientRIO, buf, hostname, (char *) portStr); //remember to free later
-	DEBUG(printf("host: %s| port: %s\n", hostname, portStr);)
-	DEBUG(printf("correctedHeader:\n%s", request);)
+	//fix headers in request to conform to our requirements
+    request = correctHeaders(&clientRIO, buf, hostname, (char *) portStr);
 	
 	//try to find request in cache
 	if((responseLen = readCache(cache, request, (void **) &response2)) > 0) {
-		DEBUG1(printf("----use cache---\n");)
-		DEBUG(printf("found in cache: \n");)
-		DEBUG(printf("%s\n", response);)
-		
 		response[0] = 'H';
-		
-		/*int readDiff = memcmp(response, cachedResponse, cachedResponseLen);
-		printf("readDiff: %d\n", readDiff);*/
-		Rio_writen(toClientFD, response, responseLen); //we will need a response length field
+		Rio_writen(toClientFD, response, responseLen); 
 		cacheResponse = 0;
-		//exit(0);
 	}
 	else {
-		DEBUG1(printf("----not using cache---\n");)
-		
+		//not found, ask server for response
 		toServerFD = Open_clientfd(hostname, portStr);
 		
-		// read from server and write to client only if valid connection to server
+		// read from server, write to client only if valid connection to server
 		if(toServerFD >= 0) {
 			Rio_readinitb(&serverRIO, toServerFD);
 			
@@ -131,18 +135,16 @@ void handleRequest(int *toClientFDPtr) {
 			int bufLen;
 			while((bufLen = Rio_readnb(&serverRIO, buf, MAXLINE)) > 0) {
 				Rio_writen(toClientFD, buf, bufLen);
-				//write to responseBuf for caching later, and if no space left, do not cache
+				//write to responseBuf for caching later, 
+				//and if no space left, do not cache.
 				if(cacheResponse != 0) {
 					int newResponseLen = responseLen+bufLen;
 					if(newResponseLen <= responseAllocLen) {
-						DEBUG(printf("copying: %s, bufLen: %d to response(%x)+responseLen(%x) = %x\n", buf, bufLen, response, responseLen, response+responseLen);)
 						void *resWritePos = (response+responseLen);
 						memcpy((char *)resWritePos, buf, bufLen);
-						responseLen = newResponseLen;
-						DEBUG(printf("copied: %s\n", response);)		
+						responseLen = newResponseLen;	
 					}
 					else {
-						DEBUG1(printf("data to large\n");)
 						cacheResponse = 0;
 					}
 				}
@@ -151,28 +153,26 @@ void handleRequest(int *toClientFDPtr) {
 			
 			if(cacheResponse != 0) {
 				writeCache(cache, request, (void *) response, responseLen);
-				DEBUG1(printf("-----wrote into cache--------\n");)
 			}
 		}
 	}
 	
-	DEBUG(printf("freeing responsePtr: %x,\n %s\n", response, response);)
-	DEBUG(if(response == NULL) {printf("true\n"); exit(0);})
-	free(response);
-	
+	//see top of file to understand why this is commented out
+	//free(response);
 	free(request);
 	Close(toClientFD);
-	DEBUG(printf("connection closed\n\n");)
-	//numThreads--;
 	return;
 }
 
+/* 
+ * Change a request's headers to conform to our requirements
+ */
 char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr) {
 	int resultActLen = strlen(buf)+strlen(acceptStr)+strlen(accept_encodingStr)
 			+strlen(user_agentStr)+strlen(proxyConnectionStr)
 			+strlen(connectionStr)+2; //+2 for /r/n
 	int resultAllocLen = 0;
-	char *result = (char *) Malloc(sizeof(char)*(resultActLen+1)); //+1 for null term
+	char *result = (char *) Malloc(sizeof(char)*(resultActLen+1)); //+1 '\0'
 	result[resultAllocLen] = '\0';
 	
 	strcpy(result, buf); //buf is the get request line
@@ -183,16 +183,14 @@ char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr) {
 	strcat(result, connectionStr);
 	resultAllocLen = resultActLen-2;
 	
+	//read response and correct the headers when you encounter them
     while(strcmp(buf, "\r\n") && strcmp(buf, "\n")) {
 		char key[MAXLINE], value[MAXLINE], *append;
 		
 		Rio_readlineb(rp, buf, MAXLINE);
 		sscanf(buf, "%s %s", key, value);
 		append = "";
-		/*if(!strcasecmp(key, "cookie:") || !strcasecmp(key, "proxy-connection:") 
-			|| !strcasecmp(key, "connection:") || !strcasecmp(key, "accept-encoding:")
-			|| !strcasecmp(key, "accept:") || !strcasecmp(key, "user-agent:")) 
-		{append = "";}*/
+
 		if(!strcasecmp(key , "host:") || !strcasecmp(key, "accept-language:")){
 			append = buf;
 			if(!strcasecmp(key, "host:")) {
@@ -209,7 +207,7 @@ char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr) {
 		if(sizeNeeded >= resultActLen) {
 			int resizeSize = 2*resultAllocLen;
 			if(sizeNeeded > resizeSize) {resizeSize = sizeNeeded;}
-			result = (char *) Realloc(result, sizeof(char)*(resizeSize+1)); //+1 for null terminator
+			result = (char *) Realloc(result, sizeof(char)*(resizeSize+1));
 			resultActLen = resizeSize;
 		}
 		
@@ -217,12 +215,17 @@ char *correctHeaders(rio_t *rp, char *buf, char *host, char *portStr) {
 		resultAllocLen = sizeNeeded;
     }
 	
-	//end request
+	//end the request
 	
-	if(resultAllocLen+2 < resultActLen) {//downsize if necessary, +2 because we are saving space of '\r\n'
-		result = (char *) Realloc(result, sizeof(char)*(resultAllocLen+3)); //+3 for null terminator and EOF flag ('\r\n')
+	//make sure we have the right size
+	if(resultAllocLen+2 < resultActLen) {
+		//+3 for null terminator and EOF flag ('\r\n')
+		result = (char *) Realloc(result, sizeof(char)*(resultAllocLen+3));
 	}
-	result[resultAllocLen] = '\r'; result[resultAllocLen+1] = '\n'; result[resultAllocLen+2] = '\0';
+
+	result[resultAllocLen] = '\r'; 
+	result[resultAllocLen+1] = '\n'; 
+	result[resultAllocLen+2] = '\0';
 	
     return result;
 }
