@@ -744,11 +744,17 @@ int open_clientfd(char *hostname, char *portStr) {
 	
 	// Get address info by given hostname and port
 	if((error = Getaddrinfo(hostname, portStr, NULL, &res)) < 0) 
-	{return error;}
+	{
+		freeaddrinfo(res);
+		return error;
+	}
 
     // Establish a connection with the server
     if (connect(clientfd, (SA *) res->ai_addr, res->ai_addrlen) < 0)
-	{return -1;}
+	{
+		freeaddrinfo(res);
+		return -1;
+	}
 	
 	freeaddrinfo(res);
     return clientfd;

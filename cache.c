@@ -189,6 +189,7 @@ int getFromCache(Cache c, char *req, char **userResponse){
 	c->readCount++;
 	if(c->readCount == 1){
 		//first reader - lock writers
+
 		P(&c->write);
 	}
 	V(&c->all);

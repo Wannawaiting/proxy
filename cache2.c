@@ -3,7 +3,7 @@
 #include <strings.h>
 #include "csapp.h"
 
-#define DEBUG(X) //X
+#define DEBUGC(X) //X
 
 
 /***********
@@ -32,7 +32,11 @@ struct Cache {
 	int cachedSize;
 	int maxBlockSize;
 	int maxCacheSize;
+	int readCount;
+	sem_t all;
+	sem_t write;
 };
+
 
 
 /***********************
@@ -65,38 +69,46 @@ unsigned long hash(char *str);
 /******************
  * Node Functions *
  ******************/
-
+ 
+//Node Constructor
 Node newNode(Node next, char *req, void *res, int resSize) {
-	Node n = (Node) malloc(sizeof(struct Node));
+	Node n = (Node) Malloc(sizeof(struct Node));
 	n->next = next;
 	
-	n->req = (char *) calloc(strlen(req)+1, sizeof(char));
+	n->req = (char *) Calloc(strlen(req)+1, sizeof(char));
 	strcpy(n->req, req);
-	DEBUG(printf("n->req: %s\n", n->req);)
+	DEBUGC(printf("n->req: %s\n", n->req);)
 	
-	n->res = (void *) malloc(resSize);
+	/*store response as void * because it can be binary data, 
+	so this will avoid coder error*/
+	n->res = (void *) Malloc(resSize);
 	memcpy(n->res, res, resSize);
+	//printf("newNode mmDiff: %d\n", memcmp(n->res, res, resSize));
 	n->resSize = resSize;
 	
-	DEBUG(printf("new Node: ");)
-	DEBUG(printNode(n);)
+	DEBUGC(printf("new Node: ");)
+	DEBUGC(printNode(n);)
 	return n;
 }
 
+//Node Destroyer
 int freeNode(Node n) {
 	if(n == NULL) {return -1;}
 	
-	//DEBUG(printf("req\n");)
+	/*do not free n->next since it is just a pointer which is 
+	instantiated outside of this node's construction*/
+	
+	//DEBUGC(printf("req\n");)
 	if(n->req != NULL) {free(n->req);}
-	//DEBUG(printf("res\n");)
+	//DEBUGC(printf("res\n");)
 	if(n->res != NULL) {free(n->res);}
 	
-	//DEBUG(printf("freeSize\n");)
+	//DEBUGC(printf("freeSize\n");)
 	int freeSize = n->resSize;
 	
-	//DEBUG(printf("free n\n");)
+	//DEBUGC(printf("free n\n");)
 	free(n);
-	//DEBUG(printf("return\n");)
+	//DEBUGC(printf("return\n");)
 	return freeSize;
 }
 
@@ -113,7 +125,7 @@ void printNode(Node n) {
  ************************/
  
 LinkedList newLinkedList(Node head, Node tail) {
-	LinkedList ll = (LinkedList) malloc(sizeof(struct LinkedList));
+	LinkedList ll = (LinkedList) Malloc(sizeof(struct LinkedList));
 	ll->head = head;
 	ll->tail = tail;
 	return ll;
@@ -121,29 +133,29 @@ LinkedList newLinkedList(Node head, Node tail) {
 
 int freeLinkedList(LinkedList ll) {
 	if(ll == NULL) {return -1;}
-	DEBUG(printf("ll: %x\n", ll);)
+	DEBUGC(printf("ll: %x\n", ll);)
 	int freeSize = 0;
 	int count = 0;
 	while(ll->head != NULL) {
-		DEBUG(printf("id: %d\n", count);)
+		DEBUGC(printf("id: %d\n", count);)
 		Node n = ll->head;
 		ll->head = n->next;
-		DEBUG(printf("asdf n: %x\n", n);)
+		DEBUGC(printf("asdf n: %x\n", n);)
 		freeSize += freeNode(n);
 		count++;
 	}
 	
-	DEBUG(printf("free ll\n");)
+	DEBUGC(printf("free ll\n");)
 	free(ll);
 	return freeSize;
 }
 
 int evictLinkedList(LinkedList ll) {
 	if(ll == NULL) {return -2;}
-	DEBUG(printf("evicting...\n");)
+	DEBUGC(printf("evicting...\n");)
 	int evictSize = -1;
 	Node pTail = ll->head;
-	if(pTail != NULL && pTail->next != ll->tail) {
+	while(pTail != NULL && pTail->next != ll->tail) {
 		pTail = pTail->next;
 	}
 	
@@ -156,7 +168,7 @@ int evictLinkedList(LinkedList ll) {
 		ll->tail = pTail;
 		ll->tail->next = NULL;
 	}
-	exit(0);
+	//exit(0);
 	return evictSize;
 }
 
@@ -167,12 +179,12 @@ Node findNode(LinkedList ll, char *req, Node *retPrevNode) {
 	
 	Node n = ll->head;
 	*retPrevNode = NULL;
-	DEBUG(printf("searching: \n");)
-	DEBUG(printNode(n);)
+	DEBUGC(printf("searching: \n");)
+	DEBUGC(printNode(n);)
 	
 	while(n != NULL && strcasecmp(req, n->req) != 0) {
-		DEBUG(printf("searching: ");)
-		DEBUG(printNode(n);)
+		DEBUGC(printf("searching: ");)
+		DEBUGC(printNode(n);)
 		*retPrevNode = n;
 		n = n->next;
 	}
@@ -182,7 +194,7 @@ Node findNode(LinkedList ll, char *req, Node *retPrevNode) {
 
 void moveToHead(LinkedList ll, Node n, Node pN) {
 	//notice for pN to be null, n is the head node due to findNode
-	if(ll != NULL && n != NULL && pN != NULL) {
+	if(ll != NULL && n != NULL && pN != NULL && ll->head != n) {
 		pN->next = n->next;
 		if(ll->tail == n) {ll->tail = pN;}
 		n->next = ll->head;
@@ -196,9 +208,9 @@ void moveToHead(LinkedList ll, Node n, Node pN) {
  *******************/
 
 Cache newCache(int numRows, int maxBlockSize, int maxCacheSize) {
-	Cache c = (Cache) malloc(sizeof(struct Cache));
+	Cache c = (Cache) Malloc(sizeof(struct Cache));
 	
-	c->arr = malloc(sizeof(LinkedList)*numRows);
+	c->arr = (LinkedList *) Malloc(sizeof(LinkedList)*numRows);
 	c->numRows = numRows;
 	int r;
 	for(r = 0; r < numRows; r++) {
@@ -208,6 +220,10 @@ Cache newCache(int numRows, int maxBlockSize, int maxCacheSize) {
 	c->cachedSize = 0;
 	c->maxBlockSize = maxBlockSize;
 	c->maxCacheSize = maxCacheSize;
+	
+	Sem_init(&(c->all), 0, 1);
+	Sem_init(&(c->write), 0, 1);
+	c->readCount = 0;
 	
 	return c;
 }
@@ -244,23 +260,46 @@ void evictIfNecessary(Cache c, int llStartIdx, int evictSize) {
 			}
 		}
 	}
-	else {DEBUG(printf("no need to evict\n");)}
+	else {DEBUGC(printf("no need to evict\n");)}
 }
 
 int readCache(Cache c, char *req, void **retRes) {
 	int llIdx = (hash(req))%(c->numRows);
 	Node pN;
-	DEBUG(printf("read %s from llIdx: %d\n", req, llIdx);)
-	DEBUG(printNode(c->arr[llIdx]->head);)
+	DEBUGC(printf("read %s from llIdx: %d\n", req, llIdx);)
+	DEBUGC(printNode(c->arr[llIdx]->head);)
+	
+	//Reader Initialization
+	P(&c->all);
+	c->readCount++;
+	if(c->readCount == 1) {
+		//first reader - must lock writers
+		P(&c->write);
+	}
+	V(&c->all);
+	
+	//Read
 	Node n = findNode(c->arr[llIdx], req, &pN);
 	
+	//Reader Finalization
+	P(&c->all);
+	c->readCount--;
+	if(c->readCount == 0) {
+		//last reader - unlock writers
+		V(&c->write);
+	}
+	V(&c->all);
+	
 	if(n != NULL) {
-		//printf("found res: %s\n", (char *) n->res);
-		*retRes = realloc(*retRes, n->resSize);
+		//Writer Initialized - lock writers
+		P(&c->write);
+		
+		//*retRes = realloc(*retRes, n->resSize);
 		memcpy(*retRes, n->res, n->resSize);
-		//lock all
 		moveToHead(c->arr[llIdx], n, pN);
-		//unlock all
+		
+		//Writer Finalization - unlock writers
+		V(&c->write);
 		return n->resSize;
 	}
 	
@@ -270,18 +309,22 @@ int readCache(Cache c, char *req, void **retRes) {
 //assumes req is not in cache, otherwise creates a duplicate
 void writeCache(Cache c, char *req, void *res, int resSize) {
 	int llIdx = (hash(req))%(c->numRows);
-	DEBUG(printf("writing %s to llIdx: %d\n", req, llIdx);)
+	DEBUGC(printf("writing %s to llIdx: %d\n", req, llIdx);)
 	
-	//lock All
+	//Writer Initialization - lock writers
+	P(&c->write);
+	
 	evictIfNecessary(c, llIdx, resSize);
 	Node oldHead = c->arr[llIdx]->head;
 	c->arr[llIdx]->head = newNode(oldHead, req, res, resSize);
 	if(c->arr[llIdx]->tail == NULL) {
 		c->arr[llIdx]->tail = c->arr[llIdx]->head;
 	}
-	DEBUG(printf("wrote node: ");)
-	DEBUG(printNode(c->arr[llIdx]->head);)
-	//unlock all
+	DEBUGC(printf("wrote node: ");)
+	DEBUGC(printNode(c->arr[llIdx]->head);)
+	
+	//Writer Finalization - unlock writers
+	V(&c->write);
 	return;
 }
 
