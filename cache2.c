@@ -70,7 +70,7 @@ unsigned long hash(char *str);
  * Node Functions *
  ******************/
  
-//Node Constructor
+//Node Constructor, deep copy req and res
 Node newNode(Node next, char *req, void *res, int resSize) {
 	Node n = (Node) Malloc(sizeof(struct Node));
 	n->next = next;
@@ -182,7 +182,8 @@ int evictLinkedList(LinkedList ll) {
 /* Iterate through LinkedList ll till we find a Node n where n->req == req
  * return Null if any of the inputs are Null
  * return Null if no node found
- * return Node n when found */
+ * return Node n when found 
+ * set retPrevNode to the found Node's previous Node (makes it easier to remove)*/
 Node findNode(LinkedList ll, char *req, Node *retPrevNode) {
 	if(ll == NULL || req == NULL || retPrevNode == NULL) {
 		return NULL;
@@ -193,6 +194,8 @@ Node findNode(LinkedList ll, char *req, Node *retPrevNode) {
 	DEBUGC(printf("searching: \n");)
 	DEBUGC(printNode(n);)
 	
+	/*Continue to next node while node is not null 
+	and we have not found the request (req)*/
 	while(n != NULL && strcasecmp(req, n->req) != 0) {
 		DEBUGC(printf("searching: ");)
 		DEBUGC(printNode(n);)
@@ -203,11 +206,19 @@ Node findNode(LinkedList ll, char *req, Node *retPrevNode) {
 	return n;
 }
 
+/* Move a given Node n to the head of LinkedList ll,
+ * if n is the head or if any of the input params are NULL, do nothing */
 void moveToHead(LinkedList ll, Node n, Node pN) {
-	//notice for pN to be null, n is the head node due to findNode
+	/*notice for pN to be null, n is the head node due to findNode, 
+	but we check for both due to potential race conditions*/
 	if(ll != NULL && n != NULL && pN != NULL && ll->head != n) {
+		//remove n from its current location in ll
 		pN->next = n->next;
+		
+		//if n is the tail, move tail back to pN
 		if(ll->tail == n) {ll->tail = pN;}
+		
+		//make n the new head of ll
 		n->next = ll->head;
 		ll->head = n;
 	}
@@ -218,6 +229,7 @@ void moveToHead(LinkedList ll, Node n, Node pN) {
  * Cache Functions *
  *******************/
 
+//Cache Creator
 Cache newCache(int numRows, int maxBlockSize, int maxCacheSize) {
 	Cache c = (Cache) Malloc(sizeof(struct Cache));
 	
@@ -239,11 +251,15 @@ Cache newCache(int numRows, int maxBlockSize, int maxCacheSize) {
 	return c;
 }
  
+/* Cache Destroyer
+ * return -1 of c is Null
+ * returns the total number of cached bytes freed */
 int freeCache(Cache c) {
 	if(c == NULL) {return -1;}
 	
 	int freeSize = 0;
 	if(c->arr != NULL) {
+		//Iterate through array of LinkedLists and free each one
 		int r;
 		for(r = 0; r < c->numRows; r++) {
 			if(c->arr[r] != NULL)
@@ -255,6 +271,8 @@ int freeCache(Cache c) {
 	return freeSize;
 }
 
+/* Evict until the evictSize + cachedSize <= maxCacheSize to maintain the 
+ * cache's maxSize (c->maxCacheSize)*/
 void evictIfNecessary(Cache c, int llStartIdx, int evictSize) {
 	if(0 < evictSize && evictSize <= c->maxBlockSize
 		&& c->cachedSize + evictSize > c->maxCacheSize) {

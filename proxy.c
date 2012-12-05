@@ -77,7 +77,7 @@ void handleRequest(int *toClientFDPtr) {
 	hostname[0] = '\0'; portStr[0] = '\0';
     rio_t clientRIO, serverRIO;
 	char *request;
-	int responseAllocLen = MAX_OBJECT_SIZE;
+	int responseAllocLen = MAX_OBJECT_SIZE-1;
 	int responseLen = 0;
 	char *response = Malloc(responseAllocLen);
 	void *response2 = response+1;
@@ -155,8 +155,8 @@ void handleRequest(int *toClientFDPtr) {
 	}
 	
 	DEBUG(printf("freeing responsePtr: %x,\n %s\n", response, response);)
-	DEBUG(if(response == NULL) {printf("true\n");exit(0);})
-	//free(response);
+	DEBUG(if(response == NULL) {printf("true\n"); exit(0);})
+	free(response);
 	
 	free(request);
 	Close(toClientFD);
